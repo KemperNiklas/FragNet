@@ -7,25 +7,23 @@ from torch_scatter import scatter
 import torch.nn.functional as F
 
 class SubstructureLayer(Module):
-    def __init__(self, message_neighbor, node2substructures, substructures2node, substructures_attention):
+    def __init__(self, message_neighbor, node2substructures, substructures2node):
         super().__init__()
         self.message_neighbor = message_neighbor 
         self.node2substructures = node2substructures
         self.substructures2node = substructures2node
-        self.substructures_attention = substructures_attention
     
     def reset_parameters(self):
         self.message_neighbor.reset_parameters()
         self.node2substructures.reset_parameters()
         self.substructures2node.reset_parameters()
-        #TODO: reset substructure_attention
 
 
     def forward(self, x, neighbor_edge_index, substructures_edge_index):
         x = self.message_neighbor(x, neighbor_edge_index)
         
         #message from nodes to substructure
-        for substructure_edge_index, node2substructure, substructure2node, substructure_attention in zip(substructures_edge_index, self.node2substructures, self.substructures2node, self.substructures_attention):
+        for substructure_edge_index, node2substructure, substructure2node in zip(substructures_edge_index, self.node2substructures, self.substructures2node):
             row, col = substructure_edge_index
             substructure_x = scatter(x[row], col, reduce = "sum", dim = 0)
             #substructure transform
@@ -35,7 +33,7 @@ class SubstructureLayer(Module):
             substructure_message = substructure2node(scatter(
                 substructure_x[col], row, dim = 0, dim_size = x.size(0)
             ))
-            x = x + substructure_attention * substructure_message
+            x = x + substructure_message
         return x
     
 
@@ -47,10 +45,6 @@ class SimpleSubstructureNeuralNet(torch.nn.Module):
         self.num_layers = num_layers
 
         self.layers = ModuleList()
-
-        self.substructures_attention = ParameterList()
-        for _ in range(num_substructures):
-            self.substructures_attention.append(torch.nn.Parameter(torch.zeros((1,)), requires_grad= True))  
 
         for i in range(num_layers):
             if i==0:
@@ -100,7 +94,7 @@ class SimpleSubstructureNeuralNet(torch.nn.Module):
                 )
                 substructures2node.append(substructure2node)
 
-            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node, self.substructures_attention))         
+            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node))         
 
         self.lin = Linear(hidden_channels, out_channels)
 
