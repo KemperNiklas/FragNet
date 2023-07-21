@@ -75,10 +75,12 @@ class GraphNetNodePredictions(pl.LightningModule):
         return optimizer
     
 class GraphNetGraphPredictions(pl.LightningModule):
-    def __init__(self, model):
+    def __init__(self, model, lr = 0.01, weight_decay = 5e-4):
         super().__init__()
         self.model = model
         self.metric = F.mse_loss
+        self.lr = lr
+        self.weight_decay = weight_decay
 
     def forward(self, data):
         return self.model(data)
@@ -106,5 +108,42 @@ class GraphNetGraphPredictions(pl.LightningModule):
         self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": correct})
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.01, weight_decay=5e-4)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        return optimizer
+    
+class GraphNetGraphClassification(pl.LightningModule):
+    def __init__(self, model, lr = 0.01, weight_decay = 5e-4):
+        super().__init__()
+        self.model = model
+        self.metric = torch.nn.CrossEntropyLoss()
+        self.lr = 0.01
+        self.weight_decay = 5e-4
+
+    def forward(self, data):
+        return self.model(data)
+
+    def training_step(self, batch, batch_idx):
+        data = batch
+        x_hat = torch.squeeze(self.model(data))
+        y = data.y
+        loss = self.metric(x_hat, y)
+        self.log("training_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        self._shared_eval(batch, batch_idx, "val")
+
+    def test_step(self, batch, batch_idx):
+        self._shared_eval(batch, batch_idx, "test")
+
+    def _shared_eval(self, batch, batch_idx, prefix):
+        data = batch
+        x_hat = torch.squeeze(self.model(data))
+        y = data.y
+        loss = self.metric(x_hat, y)
+        correct = torch.mean(torch.argmax(x_hat, dim=1) == y, dtype=torch.float32)  # Check against ground-truth labels.
+        self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": correct})
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         return optimizer
