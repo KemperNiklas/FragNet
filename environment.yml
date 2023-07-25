@@ -1,0 +1,21 @@
+name: substructureML
+
+channels:
+  - conda-forge
+  - pyg
+  - defaults
+
+dependencies:
+  - python=3.8
+  - nomkl
+  - jupyter
+  - numpy
+  - pandas
+  - pytorch
+  - pip
+  - ipython
+  - graph-tool
+  - pyg
+  - notebook
+  - nb_conda_kernels
+  - jupyter_contrib_nbextensions
