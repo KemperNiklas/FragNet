@@ -7,11 +7,12 @@ from torch_scatter import scatter
 import torch.nn.functional as F
 
 class SubstructureLayer(Module):
-    def __init__(self, message_neighbor, node2substructures, substructures2node):
+    def __init__(self, message_neighbor, node2substructures, substructures2node, reduction = "sum"):
         super().__init__()
         self.message_neighbor = message_neighbor 
         self.node2substructures = node2substructures
         self.substructures2node = substructures2node
+        self.reduction = reduction
     
     def reset_parameters(self):
         self.message_neighbor.reset_parameters()
@@ -25,13 +26,13 @@ class SubstructureLayer(Module):
         #message from nodes to substructure
         for substructure_edge_index, node2substructure, substructure2node in zip(substructures_edge_index, self.node2substructures, self.substructures2node):
             row, col = substructure_edge_index
-            substructure_x = scatter(x[row], col, reduce = "sum", dim = 0)
+            substructure_x = scatter(x[row], col, reduce = self.reduction, dim = 0)
             #substructure transform
             substructure_x = node2substructure(substructure_x)
 
             #message from substructure to nodes
             substructure_message = substructure2node(scatter(
-                substructure_x[col], row, dim = 0, dim_size = x.size(0)
+                substructure_x[col], row, dim = 0, dim_size = x.size(0), reduce = self.reduction
             ))
             x = x + substructure_message
         return x
@@ -39,7 +40,7 @@ class SubstructureLayer(Module):
 
 
 class SimpleSubstructureNeuralNet(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures):
+    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures, reduction):
         
         super(SimpleSubstructureNeuralNet, self).__init__()
         self.num_layers = num_layers
@@ -94,7 +95,7 @@ class SimpleSubstructureNeuralNet(torch.nn.Module):
                 )
                 substructures2node.append(substructure2node)
 
-            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node))         
+            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node, reduction = reduction))         
 
         self.lin = Linear(hidden_channels, out_channels)
 
@@ -126,7 +127,7 @@ class SimpleSubstructureNeuralNet(torch.nn.Module):
         return x
     
 class SimpleSubstructureNeuralNetGraph(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures):
+    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures, reduction = "sum"):
         
         super(SimpleSubstructureNeuralNetGraph, self).__init__()
         self.num_layers = num_layers
@@ -182,7 +183,7 @@ class SimpleSubstructureNeuralNetGraph(torch.nn.Module):
 
                 substructures2node.append(substructure2node)
                 
-            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node))
+            self.layers.append(SubstructureLayer(GINConv(message_nn, train_eps=True), node2substructures, substructures2node, reduction = reduction))
 
         self.out = Sequential(
                     Linear(hidden_channels, 2 * hidden_channels),
