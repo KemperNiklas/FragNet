@@ -36,7 +36,7 @@ class ExperimentWrapper:
 
     # With the prefix option we can "filter" the configuration for the sub-dictionary under "data".
     @ex.capture(prefix="data")
-    def init_dataset(self, dataset: str, substructures: Dict[str, List[int]], target: Optional[str], remove_node_features: bool = False, loader_params: Optional[Dict] = None):
+    def init_dataset(self, _config, dataset: str, substructures: Dict[str, List[int]], target: Optional[str] = None, remove_node_features: bool = False, loader_params: Optional[Dict] = None):
         """Initialize train, validation and test loader.
 
         Parameters
@@ -53,12 +53,14 @@ class ExperimentWrapper:
         loader_params, optional
             Dictionary containing train_fraction, val_fraction and batch_size, not needed for Planetoid datasets, by default None.
         """
-        self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes, self.num_substructures  = datasets.data.load(dataset, substructures, target)
+        print(f"Dataset received config: {config}")
+        self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes, self.num_substructures  = datasets.data.load(dataset, substructures, target, remove_node_features, loader_params)
 
 
     @ex.capture(prefix="model")
     def init_model(self, model_type: str, model_params: dict, classification: bool = True):
         self.classification = classification
+        model_params = model_params.copy() # allows us to add fields to it
         model_params["out_channels"] = self.num_classes if classification else 1
         model_params["in_channels"] = self.num_features
         if model_type == "GCN":
@@ -66,10 +68,12 @@ class ExperimentWrapper:
         elif model_type == "SubstrucutureNet":
             model_params["num_substructures"] = self.num_substructures
             self.model = SubstructureNeuralNet(**model_params)
+        print("Setup model:")
+        print(self.model)
 
     @ex.capture(prefix="optimization")
     def init_optimizer(self, optimization_params):
-        if self.classificaion:
+        if self.classification:
             loss = classification_loss
             acc = classification_accuracy
         else:
