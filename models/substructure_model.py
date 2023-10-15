@@ -2,7 +2,7 @@ import torch
 from torch.nn import Sequential, Linear, ReLU, Module
 from torch_geometric.nn import MessagePassing, GINConv
 from torch.nn import Embedding, ModuleList, ParameterList
-from torch.nn import Sequential, Linear, BatchNorm1d, ReLU
+from torch.nn import Sequential, Linear, BatchNorm1d, ReLU, Dropout
 from torch_scatter import scatter
 import torch.nn.functional as F
 
@@ -40,27 +40,34 @@ class SubstructureLayer(Module):
 
 
 class SubstructureNeuralNet(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures, reduction = "sum", graph_level = False, pool_reduction = "sum"):
+    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, num_substructures, reduction = "sum", graph_level = False, pool_reduction = "sum", dropout = 0, batch_norm = True):
         
         super(SubstructureNeuralNet, self).__init__()
         self.num_layers = num_layers
         self.graph_level = graph_level
         self.pool_reduction = pool_reduction
+        self.dropout = dropout
+        self.batch_norm = batch_norm
 
+        if batch_norm:
+            self.feature_encoder = Sequential(Linear(in_channels, hidden_channels), BatchNorm1d(hidden_channels), ReLU(),
+                                          Linear(hidden_channels, hidden_channels), BatchNorm1d(hidden_channels), ReLU())
+        else:
+            self.feature_encoder = Sequential(Linear(in_channels, hidden_channels), ReLU(),
+                                          Linear(hidden_channels, hidden_channels), ReLU())
         self.layers = ModuleList()
 
         for i in range(num_layers):
-            if i==0:
+            if batch_norm:
                 message_nn = Sequential(
-                Linear(in_channels, 2 * hidden_channels),
-                BatchNorm1d(2 * hidden_channels),
-                ReLU(),
-                Linear(2 * hidden_channels, hidden_channels),
+                    Linear(hidden_channels, 2 * hidden_channels),
+                    BatchNorm1d(2 * hidden_channels),
+                    ReLU(),
+                    Linear(2 * hidden_channels, hidden_channels),
                 )
             else:
                 message_nn = Sequential(
                     Linear(hidden_channels, 2 * hidden_channels),
-                    BatchNorm1d(2 * hidden_channels),
                     ReLU(),
                     Linear(2 * hidden_channels, hidden_channels),
                 )
@@ -102,6 +109,7 @@ class SubstructureNeuralNet(torch.nn.Module):
         self.out = Sequential(
                     Linear(hidden_channels, 2 * hidden_channels),
                     ReLU(),
+                    Dropout(p = self.dropout),
                     Linear(2 * hidden_channels, out_channels),
                 )
 
@@ -114,6 +122,8 @@ class SubstructureNeuralNet(torch.nn.Module):
 
     def forward(self, data):
         x = data.x
+
+        x = self.feature_encoder(x)
 
         for i in range(self.num_layers):
 

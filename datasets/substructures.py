@@ -6,6 +6,9 @@ import networkx as nx
 import torch
 from itertools import chain
 
+from collections import defaultdict
+from math import comb
+
 def get_cliques(edge_index: torch.Tensor, max_k: int, min_k: int = 3):
     """
     Compute all cliques of given lengths.
@@ -47,6 +50,28 @@ def get_cliques(edge_index: torch.Tensor, max_k: int, min_k: int = 3):
                 sorted_cliques.add(tuple(sorted(iso)))
     cliques = list(cliques)
     return cliques
+
+def get_max_cliques(edge_index: torch.Tensor):
+    if isinstance(edge_index, torch.Tensor):
+        edge_index = edge_index.numpy()
+    edge_list = edge_index.T
+    graph_gt = gt.Graph(directed=False)
+    graph_gt.add_edge_list(edge_list)
+    gen.remove_self_loops(graph_gt)
+    gen.remove_parallel_edges(graph_gt)
+    return top.max_cliques(graph_gt)
+
+def get_clique_counts(edge_index: torch.Tensor, max_clique):
+    clique_counts = [0 for i in range(3, max_clique +1)]
+    for clique in get_max_cliques(edge_index):
+        if len(clique) < 3:
+            continue
+        elif len(clique) > max_clique:
+            clique_counts[max_clique - 3] += comb(len(clique), max_clique)
+        else:
+            clique_counts[len(clique) - 3] += 1
+    return clique_counts
+
 
 def get_rings(edge_index: torch.Tensor, max_k: int, min_k: int = 3):
     """
