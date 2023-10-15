@@ -38,7 +38,7 @@ class ExperimentWrapper:
 
     # With the prefix option we can "filter" the configuration for the sub-dictionary under "data".
     @ex.capture(prefix="data")
-    def init_dataset(self, _config, dataset: str, seed: Optional[int] = None, remove_node_features: bool = False, one_hot_degree: bool = False, one_hot_edge_features: bool = True, fragmentation_method: Optional[Tuple[str, str]] = None, loader_params: Optional[Dict] = None):
+    def init_dataset(self, _config, dataset: str, seed: Optional[int] = None, remove_node_features: bool = False, one_hot_degree: bool = False, one_hot_node_features: bool = False, one_hot_edge_features: bool = False, fragmentation_method: Optional[Tuple[str, str]] = None, loader_params: Optional[Dict] = None):
         """Initialize train, validation and test loader.
 
         Parameters
@@ -62,7 +62,7 @@ class ExperimentWrapper:
         
         if fragmentation_method:
             _, _, self.num_substructures = fragmentation_method
-        self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = datasets.data.load_fragmentation(dataset, remove_node_features = remove_node_features, one_hot_degree = one_hot_degree,one_hot_edge_features=one_hot_edge_features, fragmentation_method = fragmentation_method , loader_params = loader_params)
+        self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = datasets.data.load_fragmentation(dataset, remove_node_features = remove_node_features, one_hot_degree = one_hot_degree,one_hot_node_features=one_hot_node_features,one_hot_edge_features=one_hot_edge_features, fragmentation_method = fragmentation_method , loader_params = loader_params)
 
 
     @ex.capture(prefix="model")

@@ -155,7 +155,7 @@ def load (dataset: str, motifs: Dict[str, List[int]] = {}, target: List = [], re
     num_substructures = len(data[0].substructures_edge_index)
     return train_loader, val_loader, test_loader, num_features, num_classes, num_substructures
 
-def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_edge_features, fragmentation_method, loader_params):
+def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_node_features: bool, one_hot_edge_features, fragmentation_method, loader_params):
 
     if fragmentation_method:
         frag_type, frag_usage, max_vocab = fragmentation_method
@@ -165,72 +165,63 @@ def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_ed
         frag_constructions = {"BBB": frag.BreakingBridgeBonds, "PSM": frag.PSM, "BRICS": frag.BRICS, "Magnet": frag.Magnet, "Rings": frag.Rings}
         frag_usages = {"node_feature": frag.NodeFeature(max_vocab), "global": frag.GraphLevelFeature(max_vocab), "fragment": frag.FragmentRepresentation(max_vocab)}
     
-        
-    if dataset == "ZINC" or dataset == "ZINC-full":
+
+    #create fragmentation
+    transformations = []
+    
+    if remove_node_features:
+        transformations.append(RemoveNodeFeature())
+    
+    if one_hot_node_features:
         one_hot_classes = 30
+        transformations.append(OneHotEncoding(num_classes=one_hot_classes, feature = "x"))
+    
+    if one_hot_edge_features:
         num_edge_types = 4
-        
-        if dataset == "ZINC-full":
-            subset = False
-        else:
-            subset = True
-        
+        transformations.append(OneHotEncoding(num_classes=num_edge_types, feature = "edge_attr"))
 
-        #create fragmentation
-        transformations = []
-        
-        if remove_node_features:
-            transformations.append(RemoveNodeFeature())
-        else:
-            transformations.append(OneHotEncoding(num_classes=one_hot_classes, feature = "x"))
-        
-        if one_hot_edge_features:
-            transformations.append(OneHotEncoding(num_classes=num_edge_types, feature = "edge_attr"))
+    if one_hot_degree:
+        transformations.append(OneHotDegree(100))
+    
+    if fragmentation_method:
+        frag_construction = frag_constructions[frag_type](vocab) if vocab else frag_constructions[frag_type](max_vocab)
+        frag_representation = frag_usages[frag_usage]
+        transformations.append(frag_construction)
+        transformations.append(frag_representation)
 
-        if one_hot_degree:
-            transformations.append(OneHotDegree(_get_max_degree(vocab_data)))
-        
-        if fragmentation_method:
-            frag_construction = frag_constructions[frag_type](vocab) if vocab else frag_constructions[frag_type](max_vocab)
-            frag_representation = frag_usages[frag_usage]
-            transformations.append(frag_construction)
-            transformations.append(frag_representation)
+    config_hash = hash((remove_node_features, one_hot_edge_features, one_hot_degree, tuple(fragmentation_method)))
 
-        config_hash = hash((remove_node_features, one_hot_edge_features, one_hot_degree, tuple(fragmentation_method)))
-
-        if dataset == "ZINC" or dataset == "ZINC-full":
-            transform.insert(0, ZINC_Graph_Add_Mol())
-            transform = Compose(transformations)
-            subset = True if dataset == "ZINC" else False
-            train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "train")
-            val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "val")
-            test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "test")
-            data = train_data
-        
-        elif dataset == "OGBG-MOLHIV":
-            transform.insert(0, ZINC_Graph_Add_Mol())
-            transform = Compose(transformations)
-            data = PygGraphPropPredDataset(name = f"{dataset}_{config_hash}", root = f"{DATASET_ROOT}/{dataset}", pre_transform= transform)
-            split_idx = dataset.get_idx_split()
-            train_data = data[split_idx["train"]]
-            val_data = data[split_idx["valid"]]
-            test_data = data[split_idx["test"]]
-        
-        else:
-            raise RuntimeError("Dataset {dataset} not supported")
-
-        
-        
-        if fragmentation_method and frag_usage == "fragment":
-            follow_batch = ["x", "fragments"]
-        else:
-            follow_batch = None
-        train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
-        val_loader = DataLoader(val_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
-        test_loader = DataLoader(test_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
-
+    if dataset == "ZINC" or dataset == "ZINC-full":
+        transform.insert(0, ZINC_Graph_Add_Mol())
+        transform = Compose(transformations)
+        subset = True if dataset == "ZINC" else False
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "test")
+        data = train_data
+    
+    elif dataset == "OGBG-MOLHIV":
+        transform.insert(0, ZINC_Graph_Add_Mol())
+        transform = Compose(transformations)
+        data = PygGraphPropPredDataset(name = f"{dataset}_{config_hash}", root = f"{DATASET_ROOT}/{dataset}", pre_transform= transform)
+        split_idx = dataset.get_idx_split()
+        train_data = data[split_idx["train"]]
+        val_data = data[split_idx["valid"]]
+        test_data = data[split_idx["test"]]
+    
     else:
-        raise RuntimeError("Dataset is not supported")
+        raise RuntimeError("Dataset {dataset} not supported")
+
+        
+        
+    if fragmentation_method and frag_usage == "fragment":
+        follow_batch = ["x", "fragments"]
+    else:
+        follow_batch = None
+        
+    train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
+    val_loader = DataLoader(val_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
+    test_loader = DataLoader(test_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
 
     num_features = data.num_features
     num_classes = data.num_classes
