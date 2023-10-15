@@ -192,7 +192,7 @@ def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_no
     config_hash = hash((remove_node_features, one_hot_edge_features, one_hot_degree, tuple(fragmentation_method)))
 
     if dataset == "ZINC" or dataset == "ZINC-full":
-        transform.insert(0, ZINC_Graph_Add_Mol())
+        transformations.insert(0, ZINC_Graph_Add_Mol())
         transform = Compose(transformations)
         subset = True if dataset == "ZINC" else False
         train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "train")
@@ -201,7 +201,7 @@ def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_no
         data = train_data
     
     elif dataset == "OGBG-MOLHIV":
-        transform.insert(0, ZINC_Graph_Add_Mol())
+        transformations.insert(0, ZINC_Graph_Add_Mol())
         transform = Compose(transformations)
         data = PygGraphPropPredDataset(name = f"{dataset}_{config_hash}", root = f"{DATASET_ROOT}/{dataset}", pre_transform= transform)
         split_idx = dataset.get_idx_split()
@@ -218,7 +218,7 @@ def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_no
         follow_batch = ["x", "fragments"]
     else:
         follow_batch = None
-        
+
     train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
     val_loader = DataLoader(val_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
     test_loader = DataLoader(test_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
