@@ -40,6 +40,7 @@ class HLG(torch.nn.Module):
         #Model
         self.atom2atom = ModuleList()
         self.edge_encoders = ModuleList()
+        #self.edge2atom = ModuleList()
 
         if self.inter_message_passing:
             self.atom2frag = ModuleList()
@@ -53,16 +54,15 @@ class HLG(torch.nn.Module):
             self.combine_frag_messages = ModuleList()
 
         for i in range(num_layers):
-            self.edge_encoders.append(BondEncoder(self.hidden_channels))
-            nn_atom = MLP(self.hidden_channels, self.hidden_channels, num_layers =2, batch_norm = True)
-            self.atom2atom.append(GINEConv(nn_atom, train_eps=True))
+            self.edge_encoders.append(BondEncoder(self.hidden_channels_edge))
+            self.atom2atom.append(InterMessage(self.hidden_channels + self.hidden_channels_edge, self.hidden_channels, num_layers_before = num_layers_message_before, num_layers_after = num_layers_message_after, reduction = self.reduction))
+            #self.edge2atom.append(InterMessage(self.hidden_channels, self.hidden_channels, num_layers_before = num_layers_message_before, num_layers_after = num_layers_message_after, reduction = self.reduction))
             if self.inter_message_passing:
                 self.frag2atom.append(InterMessage(self.hidden_channels_frag, self.hidden_channels, num_layers_before = num_layers_message_before, num_layers_after = num_layers_message_after, reduction = self.reduction))
-                self.atom2frag.append(InterMessage(self.hidden_channels, self.hidden_channels_frag, num_layers_before = num_layers_message_before, num_layers_after = num_layers_message_after, reduction = self.reduction))
+                self.atom2frag.append(InterMessage(self.hidden_channels, self.hidden_channels_frag, num_layers_before = num_layers_message_before + 1, num_layers_after = num_layers_message_after, reduction = self.reduction))
                 self.combine_atom_messages.append(MLP(in_channels= 2* self.hidden_channels, out_channels = self.hidden_channels, num_layers = 1))
             if self.higher_message_passing:
-                nn_frag = MLP(self.hidden_channels_frag, self.hidden_channels_frag, num_layers = 2, batch_norm = True)
-                self.frag2frag.append(GINConv(nn_frag, train_eps = True))
+                self.frag2frag.append(InterMessage(self.hidden_channels_frag, self.hidden_channels_frag, num_layers_before=num_layers_message_before, num_layers_after=num_layers_message_after, reduction= self.reduction))
             
             if self.higher_message_passing and self.inter_message_passing:
                 self.combine_frag_messages.append(MLP(in_channels= 2 * self.hidden_channels_frag, out_channels = self.hidden_channels_frag, num_layers = 1))
@@ -84,9 +84,12 @@ class HLG(torch.nn.Module):
         for layer_ind in range(self.num_layers):
 
             # update atom representation
-            edge_attr = self.edge_encoders[layer_ind](data.edge_attr)
+            row_edge, col_edge = data.edge_index
 
-            atom2atom_msg = self.atom2atom[layer_ind](torch.clone(x), data.edge_index, edge_attr)
+            edge_attr = self.edge_encoders[layer_ind](data.edge_attr)
+            #edge_node_attr = scatter(edge_attr, row_edge, dim = 0, dim_size = x.size(0), reduce = self.reduction)
+
+            atom2atom_msg = self.atom2atom[layer_ind](torch.concat([x[row_edge], edge_attr], dim = -1), col_edge, dim_size = x.size(0))
             
             if self.inter_message_passing:
                 frag2atom_msg = self.frag2atom[layer_ind](x_frag[col], row, dim_size=x.size(0))
@@ -99,7 +102,8 @@ class HLG(torch.nn.Module):
                 atom2frag_msg = self.atom2frag[layer_ind](x[row], col, dim_size = x_frag.size(0))
             
             if self.higher_message_passing:
-                frag2frag_msg = self.frag2frag[layer_ind](torch.clone(x_frag), data.higher_edge_index)
+                row_higher, col_higher = data.higher_edge_index
+                frag2frag_msg = self.frag2frag[layer_ind](x_frag[row_higher], col_higher, dim_size = x_frag.size(0))
             
             if self.higher_message_passing and self.inter_message_passing:
                 x_frag += self.combine_frag_messages[layer_ind](torch.concat([frag2frag_msg, atom2frag_msg], dim = -1))
