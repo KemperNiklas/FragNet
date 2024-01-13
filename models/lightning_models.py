@@ -3,9 +3,12 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch
 from torchmetrics.classification import BinaryAUROC, MultilabelAveragePrecision
+from torch_ema import ExponentialMovingAverage
+from typing import Optional, Callable
+from copy import deepcopy
 
 class LightningModel(pl.LightningModule):
-    def __init__(self, model, loss, acc, optimizer_parameters, scheduler_parameters = None, additional_metric = None):
+    def __init__(self, model, loss, acc, optimizer_parameters, scheduler_parameters = None, additional_metric = None, ema_decay = None):
         super().__init__()
         self.model = model
         self.optimizer_parameters = optimizer_parameters
@@ -13,6 +16,8 @@ class LightningModel(pl.LightningModule):
         self.loss = loss
         self.acc = acc
         self.additional_metric = additional_metric
+        if ema_decay:
+            self.ema = ExponentialMovingAverage(self.model.cuda().parameters(), decay=ema_decay)
     
     def forward(self, data):
         return self.model(data)
@@ -23,12 +28,34 @@ class LightningModel(pl.LightningModule):
         loss = self.loss(torch.squeeze(x_hat), data, "train")
         self.log("train_loss", loss, on_epoch=False, batch_size = _calculate_batch_size(data))
         return loss
+
+    def optimizer_step(
+            self,
+            epoch: int,
+            batch_idx: int,
+            optimizer,
+            optimizer_idx: int,
+            second_order_closure: Optional[Callable] = None,
+            on_tpu: bool = False,
+            using_native_amp: bool = False,
+            using_lbfgs: bool = False,
+    ) -> None:
+        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx, second_order_closure)
+        if self.ema is not None:
+            self.ema.update(self.model.parameters())
+        self.optimizer_steps += 1
     
     def validation_step(self, batch, batch_idx):
         self._shared_eval(batch, batch_idx, "val")
 
     def test_step(self, batch, batch_idx):
         self._shared_eval(batch, batch_idx, "test")
+    
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint['state_dict'] = self.state_dict()
+        if self.ema:
+            with self.ema.average_parameters():
+                checkpoint['ema_state_dict'] = deepcopy(self.state_dict())
     
     def on_train_epoch_end(self):
         if self.scheduler_parameters: # log learning rate
@@ -37,14 +64,26 @@ class LightningModel(pl.LightningModule):
     
     def _shared_eval(self, batch, batch_idx, prefix):
         data = batch
-        x_hat = self.model(data)
-        loss = self.loss(torch.squeeze(x_hat), data, prefix)
-        acc = self.acc(torch.squeeze(x_hat), data, prefix)
-        self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": acc}, batch_size = _calculate_batch_size(data))
-        if self.additional_metric:
-            metric = self.additional_metric
-            name = self.additional_metric.__name__
-            self.log_dict({f"{prefix}_{name}": metric(torch.squeeze(x_hat), data, prefix)}, batch_size = _calculate_batch_size(data))
+        with torch.no_grad():
+            if self.ema:
+                with self.ema.average_parameters():
+                    x_hat = self.model(data)
+                    loss = self.loss(torch.squeeze(x_hat), data, prefix)
+                    acc = self.acc(torch.squeeze(x_hat), data, prefix)
+                    self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": acc}, batch_size = _calculate_batch_size(data))
+                    if self.additional_metric:
+                        metric = self.additional_metric
+                        name = self.additional_metric.__name__
+                        self.log_dict({f"{prefix}_{name}": metric(torch.squeeze(x_hat), data, prefix)}, batch_size = _calculate_batch_size(data))
+            else:
+                x_hat = self.model(data)
+                loss = self.loss(torch.squeeze(x_hat), data, prefix)
+                acc = self.acc(torch.squeeze(x_hat), data, prefix)
+                self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": acc}, batch_size = _calculate_batch_size(data))
+                if self.additional_metric:
+                    metric = self.additional_metric
+                    name = self.additional_metric.__name__
+                    self.log_dict({f"{prefix}_{name}": metric(torch.squeeze(x_hat), data, prefix)}, batch_size = _calculate_batch_size(data))
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), **self.optimizer_parameters)

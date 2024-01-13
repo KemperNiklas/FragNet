@@ -143,7 +143,7 @@ class ExperimentWrapper:
         print(self.model)
 
     @ex.capture(prefix="optimization")
-    def init_optimizer(self, optimization_params, scheduler_parameters = None, loss: Optional[str] = None, additional_metric: Optional[str] = None):
+    def init_optimizer(self, optimization_params, scheduler_parameters = None, loss: Optional[str] = None, additional_metric: Optional[str] = None, ema_decay = None):
         loss_func = None
         if self.classification and self.num_classes > 2:
             loss_func = ce_loss
@@ -169,7 +169,7 @@ class ExperimentWrapper:
             elif additional_metric == "ap":
                 additional_metric_func = average_multilabel_precision
 
-        self.lightning_model = LightningModel(model = self.model, loss = loss_func, acc = acc, optimizer_parameters= optimization_params,scheduler_parameters=scheduler_parameters, additional_metric= additional_metric_func)
+        self.lightning_model = LightningModel(model = self.model, loss = loss_func, acc = acc, optimizer_parameters= optimization_params,scheduler_parameters=scheduler_parameters, additional_metric= additional_metric_func, ema_decay = ema_decay)
 
     def init_all(self):
         """
@@ -186,7 +186,7 @@ class ExperimentWrapper:
         if not os.path.exists(checkpoint_directory):
             os.makedirs(checkpoint_directory)
 
-        wandb_logger = WandbLogger(project=project_name, save_dir = checkpoint_directory, notes = notes)
+        wandb_logger = WandbLogger(name = f"{_config['db_collection']}_{_config['overwrite']}", project=project_name, save_dir = checkpoint_directory, notes = notes)
         wandb_logger.experiment.config.update(_config)
         #wandb_logger.watch(self.lightning_model, log="all")
 

@@ -379,4 +379,5 @@ dependencies:
       - omegaconf==2.3.0
       - rdkit==2023.3.3
       - seml==0.4.0
+      - torch-ema==0.3
       - typer==0.9.0
