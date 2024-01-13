@@ -30,20 +30,15 @@ class LightningModel(pl.LightningModule):
         return loss
 
     def optimizer_step(
-            self,
-            epoch: int,
-            batch_idx: int,
-            optimizer,
-            optimizer_idx: int,
-            second_order_closure: Optional[Callable] = None,
-            on_tpu: bool = False,
-            using_native_amp: bool = False,
-            using_lbfgs: bool = False,
-    ) -> None:
-        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx, second_order_closure)
+        self,
+        epoch,
+        batch_idx,
+        optimizer,
+        optimizer_closure,
+    ):
+        optimizer.step(closure=optimizer_closure)
         if self.ema is not None:
             self.ema.update(self.model.parameters())
-        self.optimizer_steps += 1
     
     def validation_step(self, batch, batch_idx):
         self._shared_eval(batch, batch_idx, "val")
