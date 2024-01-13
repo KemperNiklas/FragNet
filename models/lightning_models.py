@@ -18,6 +18,8 @@ class LightningModel(pl.LightningModule):
         self.additional_metric = additional_metric
         if ema_decay:
             self.ema = ExponentialMovingAverage(self.model.cuda().parameters(), decay=ema_decay)
+        else:
+            self.ema = None
     
     def forward(self, data):
         return self.model(data)
