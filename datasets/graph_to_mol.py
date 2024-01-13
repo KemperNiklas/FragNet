@@ -5,6 +5,9 @@ from torch_geometric.transforms import BaseTransform
 #from rdkit.Chem import AllChem as Chem
 from rdkit import Chem
 from rdkit.Chem.rdmolops import FastFindRings
+from torch_scatter import scatter
+
+import pandas as pd
 
 # simple atoms without charge
 # map ndx to atomic number
@@ -224,7 +227,21 @@ def extract_node_feature(data, reduce="add"):
         raise Exception("Unknown Aggregation Type")
     return data
 
-
+class OGB_Graph_Add_Mol_By_Smiles:
+    """
+    Add rdkit mol object to OGB hiv graph
+    """
+    def __init__(self, filename = 'datasets/data/ogbg_molhiv/mapping/mol.csv.gz'):
+        self.matching = pd.read_csv(filename)
+        self.idx = 0
+    
+    def __call__(self, graph):
+        mol = Chem.MolFromSmiles(self.matching.smiles[self.idx])
+        self.idx += 1
+        graph.mol = mol
+        return graph
+    
+    
 class OGB_Graph_Add_Mol:
     """
     Add rdkit mol object to OGB graph (hiv or pcba)
@@ -263,6 +280,8 @@ class OGB_Graph_Add_Mol:
 
         # cleanup the molecule
         mol.UpdatePropertyCache()
+        Chem.SanitizeMol(mol)
+        
         #FastFindRings(mol)
         graph.mol = mol
 

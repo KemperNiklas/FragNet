@@ -1,14 +1,15 @@
 import datasets.fragmentations.fragmentations as frag
-from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
+from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol_By_Smiles #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
 from typing import Dict, List, Optional, Tuple
 from torch_geometric.datasets import TUDataset, Planetoid, ZINC
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import degree
-from torch_geometric.transforms import OneHotDegree, BaseTransform, Compose
+from torch_geometric.transforms import OneHotDegree, BaseTransform, Compose, add_positional_encoding
+from datasets.lrgb import lrgb
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch.nn.functional import one_hot
-import datasets.substructures as sub
+from torch.utils.data import random_split
 import torch
 import os.path
 
@@ -19,7 +20,8 @@ import os.path
 TU_DATASETS = ["MUTAG", "ENZYMES", "PROTEINS", "COLLAB", "IMDB-BINARY", "REDDIT-BINARY"]
 PLANETOID_DATASETS = ["Cora", "CiteSeer", "PubMed"]
 
-DATASET_ROOT = f"./datasets/data"
+VOCAB_ROOT = "./datasets/data"
+DATASET_ROOT = "/ceph/hdd/students/kempern/datasets"
 
 def load (dataset: str, motifs: Dict[str, List[int]] = {}, target: List = [], remove_node_features: bool = False, one_hot_degree: bool = False, substructure_node_feature: List = [], loader_params: Optional[Dict] = None):
     """Load dataset and compute additional substructure edge index
@@ -44,7 +46,7 @@ def load (dataset: str, motifs: Dict[str, List[int]] = {}, target: List = [], re
     -------
     The (possibly transformed) dataset, the number of featrues, the number of classes, the number of substructures
     """
-
+    import datasets.substructures as sub
     one_hot_classes: Optional[int] = None
 
     def pre_transform(graph):
@@ -142,6 +144,7 @@ def load (dataset: str, motifs: Dict[str, List[int]] = {}, target: List = [], re
         val_data = ZINC(root=f'/tmp/{dataset}_{config_hash}', pre_transform = pre_transform, subset = subset, split = "val")
         test_data = ZINC(root=f'/tmp/{dataset}_{config_hash}', pre_transform = pre_transform, subset = subset, split = "test")
         data = train_data
+        data.num_classes = 1
         
         train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"])
         val_loader = DataLoader(val_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"])
@@ -155,15 +158,20 @@ def load (dataset: str, motifs: Dict[str, List[int]] = {}, target: List = [], re
     num_substructures = len(data[0].substructures_edge_index)
     return train_loader, val_loader, test_loader, num_features, num_classes, num_substructures
 
-def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_node_features: bool, one_hot_edge_features, fragmentation_method, loader_params):
+def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_node_features: bool, one_hot_edge_features, fragmentation_method, loader_params, encoding = None, subset_frac = 1, higher_edge_features = False, dataset_seed = None):
 
     if fragmentation_method:
-        frag_type, frag_usage, max_vocab = fragmentation_method
+        frag_type, frag_usage, vocab_size_params = fragmentation_method
 
-        vocab = get_vocab(dataset, frag_type, max_vocab)
+        if frag_usage == "higher_level_graph_tree":
+            # later on, tree construction introduces an additional junction fragment
+            vocab_size_params = vocab_size_params.copy() # allows us to change contents
+            vocab_size_params["vocab_size"] -= 1
+
+        vocab = get_vocab(dataset, frag_type, vocab_size_params["vocab_size"])
         
-        frag_constructions = {"BBB": frag.BreakingBridgeBonds, "PSM": frag.PSM, "BRICS": frag.BRICS, "Magnet": frag.Magnet, "Rings": frag.Rings}
-        frag_usages = {"node_feature": frag.NodeFeature(max_vocab), "global": frag.GraphLevelFeature(max_vocab), "fragment": frag.FragmentRepresentation(max_vocab)}
+        frag_constructions = {"BBB": frag.BreakingBridgeBonds, "PSM": frag.PSM, "BRICS": frag.BRICS, "Magnet": frag.Magnet, "Rings": frag.Rings, "RingsEdges": frag.RingsEdges, "RingsPaths": frag.RingsPaths, "MagnetWithoutVocab": frag.MagnetWithoutVocab}
+        frag_usages = {"node_feature": frag.NodeFeature(vocab_size_params["vocab_size"]), "global": frag.GraphLevelFeature(vocab_size_params["vocab_size"]), "fragment": frag.FragmentRepresentation(vocab_size_params["vocab_size"]), "higher_level_graph_tree": frag.HigherLevelGraph(vocab_size_params["vocab_size"], "tree", higher_edge_features= higher_edge_features), "higher_level_graph_node": frag.HigherLevelGraph(vocab_size_params["vocab_size"], "node", higher_edge_features= higher_edge_features)}
     
 
     #create fragmentation
@@ -184,55 +192,100 @@ def load_fragmentation(dataset, remove_node_features, one_hot_degree, one_hot_no
         transformations.append(OneHotDegree(100))
     
     if fragmentation_method:
-        frag_construction = frag_constructions[frag_type](vocab) if vocab else frag_constructions[frag_type](max_vocab)
+        frag_construction = frag_constructions[frag_type](vocab) if vocab else frag_constructions[frag_type](**vocab_size_params)
         frag_representation = frag_usages[frag_usage]
         transformations.append(frag_construction)
         transformations.append(frag_representation)
+    
+    if encoding:
+        for encod in encoding:
+            if encod["name"] == "random-walk":
+                random_walk_encoding = add_positional_encoding.AddRandomWalkPE(encod["walk_length"])
+                transformations.append(random_walk_encoding)
+            else:
+                raise RuntimeError(f"Encoding {encod['name']} not supported.")
 
-    config_hash = hash((remove_node_features, one_hot_edge_features, one_hot_degree, tuple(fragmentation_method)))
+
+    config_name = f"{str(fragmentation_method)}_{str(encoding)}_{str(remove_node_features)}_{str(one_hot_edge_features)}_{str(one_hot_degree)}_{str(one_hot_node_features)}_{str(higher_edge_features)}"
 
     if dataset == "ZINC" or dataset == "ZINC-full":
         transformations.insert(0, ZINC_Graph_Add_Mol())
         transform = Compose(transformations)
         subset = True if dataset == "ZINC" else False
-        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "train")
-        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "val")
-        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_hash}', pre_transform = transform, subset = subset, split = "test")
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
         data = train_data
+        num_classes = 1
     
-    elif dataset == "OGBG-MOLHIV":
-        transformations.insert(0, ZINC_Graph_Add_Mol())
+    elif dataset == "ogbg-molhiv":
+        transformations.insert(0, OGB_Graph_Add_Mol_By_Smiles())
         transform = Compose(transformations)
-        data = PygGraphPropPredDataset(name = f"{dataset}_{config_hash}", root = f"{DATASET_ROOT}/{dataset}", pre_transform= transform)
-        split_idx = dataset.get_idx_split()
+        data = PygGraphPropPredDataset(name = dataset, root = f"{DATASET_ROOT}/{dataset}/{dataset}_{config_name}", pre_transform= transform)
+        split_idx = data.get_idx_split()
         train_data = data[split_idx["train"]]
         val_data = data[split_idx["valid"]]
         test_data = data[split_idx["test"]]
+        num_classes = data.num_classes
+    
+    elif dataset == "peptides-struct":
+        transform = Compose(transformations)
+        data = lrgb.PeptidesStructuralDataset(root = f"{DATASET_ROOT}/{dataset}/{dataset}_{config_name}", pre_transform = transform, smiles2graph=lrgb.smiles2graph_add_mol)
+        split_idx = data.get_idx_split()
+        train_data = data[split_idx["train"]]
+        val_data = data[split_idx["val"]]
+        test_data = data[split_idx["test"]]
+        num_classes = data.num_classes
+    
+    elif dataset == "peptides-func":
+        transform = Compose(transformations)
+        data = lrgb.PeptidesFunctionalDataset(root = f"{DATASET_ROOT}/{dataset}/{dataset}_{config_name}", pre_transform = transform, smiles2graph=lrgb.smiles2graph_add_mol)
+        split_idx = data.get_idx_split()
+        train_data = data[split_idx["train"]]
+        val_data = data[split_idx["val"]]
+        test_data = data[split_idx["test"]]
+        num_classes = 2 # multilabel binary classification task
     
     else:
-        raise RuntimeError("Dataset {dataset} not supported")
+        raise RuntimeError(f"Dataset {dataset} not supported")
 
         
         
-    if fragmentation_method and frag_usage == "fragment":
+    if fragmentation_method and frag_usage in ["fragment", "higher_level_graph_tree", "higher_level_graph_node"] :
         follow_batch = ["x", "fragments"]
     else:
         follow_batch = None
+    
+    if subset_frac < 1:
+        subset_size = int(subset_frac * len(train_data))
+        train_data, _ = random_split(train_data, [subset_size, len(train_data) - subset_size])
 
-    train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
-    val_loader = DataLoader(val_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
-    test_loader = DataLoader(test_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch)
+    if not dataset_seed:
+        train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch, shuffle = True)
+    else:
+        # set seperate seed for dataloaderr
+        g = torch.Generator()
+        g.manual_seed(dataset_seed)
+        train_loader = DataLoader(train_data, batch_size = loader_params["batch_size"], num_workers = loader_params["num_workers"], follow_batch = follow_batch, shuffle = True, generator = g)
+
+    val_batch_size = loader_params["val_batch_size"] if "val_batch_size" in loader_params else loader_params["batch_size"]
+    val_loader = DataLoader(val_data, batch_size = val_batch_size, num_workers = loader_params["num_workers"], follow_batch = follow_batch)
+    test_loader = DataLoader(test_data, batch_size = val_batch_size, num_workers = loader_params["num_workers"], follow_batch = follow_batch)
+    
+
 
     num_features = data.num_features
-    num_classes = data.num_classes
     return train_loader, val_loader, test_loader, num_features, num_classes
 
-def get_vocab(dataset: str, frag_type: str, max_vocab = 100, root: str = DATASET_ROOT):
-    vocab_constructions = {"BBB": frag.BreakingBridgeBondsVocab(max_vocab_size=max_vocab), 
-                          "PSM": frag.PrincipalSubgraphVocab(max_vocab_size=max_vocab, vocab_path = f'/tmp/{dataset}_PSM_vocab_{max_vocab}.txt'),
-                          "BRICS": frag.BRICSVocab(max_vocab_size = max_vocab),
-                          "Magnet": frag.MagnetVocab(max_vocab_size= max_vocab),
-                          "Rings": None}
+def get_vocab(dataset: str, frag_type: str, max_vocab = 100, root: str = VOCAB_ROOT):
+    vocab_constructions = {"BBB": frag.BreakingBridgeBondsVocab(vocab_size=max_vocab), 
+                          "PSM": frag.PrincipalSubgraphVocab(vocab_size=max_vocab, vocab_path = f'/tmp/{dataset}_PSM_vocab_{max_vocab}.txt'),
+                          "BRICS": frag.BRICSVocab(vocab_size = max_vocab),
+                          "Magnet": frag.MagnetVocab(vocab_size= max_vocab),
+                          "Rings": None,
+                          "RingsEdges": None,
+                          "RingsPaths": None,
+                          "MagnetWithoutVocab": None}
 
     if frag_type not in vocab_constructions:
         raise RuntimeError("Fragmentation type is not supported")
@@ -244,12 +297,20 @@ def get_vocab(dataset: str, frag_type: str, max_vocab = 100, root: str = DATASET
             vocab = frag.get_vocab_from_file(vocab_file_name)
         else:
             # create vocab
-            if dataset == "ZINC" or "ZINC-full":
+            if dataset == "ZINC" or dataset == "ZINC-full":
                 subset = True if dataset == "ZINC" else False
-                vocab_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_mol', pre_transform = ZINC_Graph_Add_Mol(), subset = subset, split = "train")
-            elif dataset == "OGBG-MOLHIV":
-                vocab_data = PygGraphPropPredDataset(name = f"{dataset}_mol", root = DATASET_ROOT, pre_transform= OGB_Graph_Add_Mol())
-                split_idx = dataset.get_idx_split()
+                vocab_data = ZINC(root=f'{root}/{dataset}/{dataset}_mol', pre_transform = ZINC_Graph_Add_Mol(), subset = subset, split = "train")
+            elif dataset == "ogbg-molhiv":
+                vocab_data = PygGraphPropPredDataset(name = dataset, root = f'{root}/{dataset}/{dataset}_mol', pre_transform= OGB_Graph_Add_Mol_By_Smiles())
+                split_idx = vocab_data.get_idx_split()
+                vocab_data = vocab_data[split_idx["train"]]
+            elif dataset == "peptides-struct":
+                vocab_data = lrgb.PeptidesStructuralDataset(root = f'{root}/{dataset}/{dataset}_mol', smiles2graph=lrgb.smiles2graph_add_mol)
+                split_idx = vocab_data.get_idx_split()
+                vocab_data = vocab_data[split_idx["train"]]
+            elif dataset == "peptides-func":
+                vocab_data = lrgb.PeptidesFunctionalDataset(root = f'{root}/{dataset}/{dataset}_mol', smiles2graph=lrgb.smiles2graph_add_mol)
+                split_idx = vocab_data.get_idx_split()
                 vocab_data = vocab_data[split_idx["train"]]
             else:
                 raise RuntimeError(f"Dataset {dataset} not supported")

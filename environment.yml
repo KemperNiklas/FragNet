@@ -6,16 +6,13 @@ channels:
   - defaults
 
 dependencies:
-  - python=3.8
-  - nomkl
-  - jupyter
+  - python<=3.9
   - numpy
-  - pandas
   - pytorch
   - pip
-  - ipython
   - graph-tool
-  - pyg
-  - notebook
-  - nb_conda_kernels
-  - jupyter_contrib_nbextensions
+  - pyg::pyg
+  - seaborn
+  - pyg::pytorch-scatter
+  - jupyter
+  - seml

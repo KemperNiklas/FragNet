@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch
+from torchmetrics.classification import BinaryAUROC, MultilabelAveragePrecision
 
 class LightningModel(pl.LightningModule):
     def __init__(self, model, loss, acc, optimizer_parameters, scheduler_parameters = None, additional_metric = None):
@@ -41,12 +42,12 @@ class LightningModel(pl.LightningModule):
         acc = self.acc(torch.squeeze(x_hat), data, prefix)
         self.log_dict({f"{prefix}_loss": loss, f"{prefix}_acc": acc}, batch_size = _calculate_batch_size(data))
         if self.additional_metric:
-            metric = self.additional_metric(torch.squeeze(x_hat), data, prefix)
+            metric = self.additional_metric
             name = self.additional_metric.__name__
-            self.log_dict({f"{prefix}_{name}": metric}, batch_size = _calculate_batch_size(data))
+            self.log_dict({f"{prefix}_{name}": metric(torch.squeeze(x_hat), data, prefix)}, batch_size = _calculate_batch_size(data))
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), **self.optimizer_parameters)
+        optimizer = torch.optim.AdamW(self.parameters(), **self.optimizer_parameters)
         if self.scheduler_parameters:
             scheduler = ReduceLROnPlateau(optimizer, **self.scheduler_parameters)
             return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
@@ -69,6 +70,23 @@ def ce_loss(xhat, data, mode: str):
     else:
         loss = metric(xhat, data.y)
     return loss
+
+def bce_loss(xhat, data, mode: str):
+    metric = torch.nn.BCEWithLogitsLoss()
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        loss = metric(xhat[mask], torch.squeeze(data.y[mask]).float())
+    else:
+        loss = metric(xhat, torch.squeeze(data.y).float())
+    return loss
+
+def binary_classification_accuracy(xhat, data, mode: str):
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        acc = torch.mean((torch.where(xhat[mask] < 0, 0, 1) == data.y[mask]).float(), dtype = torch.float32)
+    else:
+        acc = torch.mean((torch.where(xhat < 0, 0, 1) == data.y).float(), dtype = torch.float32)
+    return acc
 
 def classification_accuracy(xhat, data, mode: str):
     if hasattr(data, f"{mode}_mask"):
@@ -96,6 +114,15 @@ def mae_loss(xhat, data, mode: str):
         loss = metric(xhat, data.y)
     return loss
 
+def auroc(xhat, data, mode: str):
+    metric = BinaryAUROC()
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        loss = metric(xhat[mask], torch.squeeze(data.y[mask]))
+    else:
+        loss = metric(xhat, torch.squeeze(data.y))
+    return loss
+
 def regression_acc(xhat, data, mode: str):
     if hasattr(data, f"{mode}_mask"):
         mask = getattr(data, f"{mode}_mask")
@@ -103,3 +130,14 @@ def regression_acc(xhat, data, mode: str):
     else:
         acc = torch.mean((torch.round(xhat) == data.y).float(), dtype=torch.float32) 
     return acc
+
+def average_multilabel_precision(xhat, data, mode: str):
+    num_labels = xhat.size(1)
+    metric = MultilabelAveragePrecision(num_labels = num_labels)
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        loss = metric(xhat[mask], torch.squeeze(data.y[mask]).long())
+    else:
+        loss = metric(xhat, torch.squeeze(data.y).long())
+    print(loss)
+    return loss
