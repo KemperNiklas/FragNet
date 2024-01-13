@@ -1,21 +1,22 @@
 seml:
   executable: experiment_fragmentation.py
   name: ZINC_full_search
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_full_search
-  project_root_dir: ~/substructure-gnns
-#  description: A first test.
+  output_dir: seml_output
+  project_root_dir: /ceph/ssd/staff/wollschl/substructure-gnns
+  conda_environment: substruct-gnn
+  description: hparam-search-zinc
 
 slurm:
-  experiments_per_job: 1
+  experiments_per_job: 3
   max_simultaneous_jobs: 8  # Restrict number of simultaneously running jobs per job array
   sbatch_options:
     gres: gpu:1       # num GPUs
     #mem: 16G          # memory
-    mem: 32G          # memory
+    mem: 64G          # memory
     #cpus-per-task: 4  # num cores
-    cpus-per-task: 6  # num cores
+    cpus-per-task: 9  # num cores
     #time: 0-00:55     # max time, D-HH:MM
-    time: 2-00:00
+    time: 4-00:00
     #exclude: gpu04,gpu12,gpu13,gpu08,gpu10,mdsi-gpu01,mdsi-gpu02
 
 ###### BEGIN PARAMETER CONFIGURATION ######
@@ -25,7 +26,7 @@ fixed:
   trainer_params:
     max_epochs: 400
     testing: False
-    min_lr: 1e-6
+    min_lr: 1e-8
 
   data:
     #seed: 40
@@ -76,29 +77,30 @@ grid:
   optimization.optimization_params.lr:
     type: choice
     options:
-      - 0.001
-      #- 0.0001
-      #- 0.01
+      # - 0.001
+      - 0.0001
+      - 0.01
   
   optimization.ema_decay:
     type: choice
     options:
       - 0.99
-      #- 0.999
-      #- None
+      - 0.999
+      - None
 
   
   model.model_params.frag_reduction:
     type: choice
     options:
       - "sum"
-      #- "max"
+      - "max"
  
   data.seed:
     type: choice
     options:
       - 23
-      #- 24
+      - 24
+      - 25
   
 
 
