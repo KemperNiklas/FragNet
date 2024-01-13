@@ -138,7 +138,7 @@ class HimpNet(torch.nn.Module):
                  degree_scaling = False, additional_atom_features = [], 
                  inter_message_passing=True, higher_message_passing = False, 
                  low_high_edges = False, fragment_specific = False, 
-                 reduction = "mean", concat = False, graph_rep = False, 
+                 reduction = "mean", frag_reduction = None, concat = False, graph_rep = False, 
                  learned_edge_rep = False, higher_level_edge_features = False,
                  graph_rep_node = False, inter_message_params = {} , hidden_channels_substructure=None,
                  num_layers_out = 2):
@@ -155,6 +155,7 @@ class HimpNet(torch.nn.Module):
         self.degree_scaling = degree_scaling
         self.fragment_specific = fragment_specific
         self.reduction = reduction
+        self.frag_reduction = frag_reduction if frag_reduction else reduction
         self.concat = concat
         self.graph_rep = graph_rep
         self.graph_rep_node = graph_rep_node
@@ -409,7 +410,7 @@ class HimpNet(torch.nn.Module):
 
         if self.inter_message_passing:
             x_clique = scatter(x_clique, data.fragments_batch, dim=0, dim_size=x.size(0),
-                               reduce=self.reduction)
+                               reduce=self.frag_reduction)
             x_clique = F.dropout(x_clique, self.dropout,
                                  training=self.training)
             x_clique = self.clique_out(x_clique)
