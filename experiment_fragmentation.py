@@ -187,7 +187,7 @@ class ExperimentWrapper:
         if not os.path.exists(checkpoint_directory):
             os.makedirs(checkpoint_directory)
 
-        wandb_logger = WandbLogger(name = f"{_config['db_collection']}_{_config['overwrite']}", project=project_name, save_dir = checkpoint_directory, notes = notes)
+        wandb_logger = WandbLogger(name = f"{_config['db_collection']}_{_config['overwrite']}", project=project_name, save_dir = checkpoint_directory, notes = notes, entity = "frags")
         wandb_logger.experiment.config.update(_config)
         #wandb_logger.watch(self.lightning_model, log="all")
 
