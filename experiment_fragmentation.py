@@ -17,6 +17,7 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 import wandb
 import os
 
+checkpoint_dir = "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints/"
 ex = Experiment()
 seml.setup_logger(ex)
 
@@ -182,7 +183,7 @@ class ExperimentWrapper:
     @ex.capture()
     def train(self, trainer_params, project_name, _config, notes = ""):
         
-        checkpoint_directory = f"./models/checkpoints/{_config['db_collection']}/run-{_config['overwrite']}"
+        checkpoint_directory = f"{checkpoint_dir}/{_config['db_collection']}/run-{_config['overwrite']}"
         if not os.path.exists(checkpoint_directory):
             os.makedirs(checkpoint_directory)
 
