@@ -17,7 +17,7 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 import wandb
 import os
 
-checkpoint_dir = "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints/"
+checkpoint_dir = "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints"
 ex = Experiment()
 seml.setup_logger(ex)
 
