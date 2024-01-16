@@ -4,7 +4,7 @@ import seml
 from typing import List, Dict, Optional, Tuple
 import datasets.data
 import datasets.data_ood
-from models.gcn import GCN, VerySimpleGCN, GCNSubstructure, HimpNet, HimpNetHigherGraph, HimpNetAlternative
+from models.gcn import GCN, VerySimpleGCN, GCNSubstructure, HimpNet, HimpNetHigherGraph, HimpNetAlternative, HimpNetSmall
 from models.hlg import HLG, HLGAlternative, HLG_Old, HLG_HIMP
 from models.substructure_model import SubstructureNeuralNet
 from models.pool_linear import PoolLinear, GlobalLinear
@@ -138,6 +138,10 @@ class ExperimentWrapper:
             model_params["in_channels_frag"] = self.num_substructures
             model_params["in_channels_edge"] = 4 #TODO: could be different for other datasets
             self.model = HLG_HIMP(**model_params)
+        elif model_type == "HimpNetSmall":
+            model_params["in_channels_frag"] = self.num_substructures
+            model_params["in_channels_edge"] = 4 #TODO: could be different for other datasets
+            self.model = HIMPNetSmall(**model_params)
         else:
             raise RuntimeError(f"Model {model_type} not supported")
         print("Setup model:")

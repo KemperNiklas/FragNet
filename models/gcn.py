@@ -134,7 +134,8 @@ class HimpNet(torch.nn.Module):
 
     def __init__(self, in_channels, in_channels_substructure, in_channels_edge, 
                  hidden_channels, out_channels, num_layers, dropout=0.0,
-                 linear_atom_encoder = False, encoding_size_scaling = False, rbf = 0, 
+                 linear_atom_encoder = False, encoding_size_scaling = False, rbf = 0,
+                 atom_feature_params = {}, edge_feature_params = {}, 
                  degree_scaling = False, additional_atom_features = [], 
                  inter_message_passing=True, higher_message_passing = False, 
                  low_high_edges = False, fragment_specific = False, 
@@ -165,14 +166,14 @@ class HimpNet(torch.nn.Module):
 
 
         #self.atom_encoder = Linear(in_channels, hidden_channels)
-        self.atom_encoder = Linear(in_channels, hidden_channels) if linear_atom_encoder else AtomEncoder(hidden_channels, degree_scaling, additional_atom_features)
+        self.atom_encoder = Linear(in_channels, hidden_channels) if linear_atom_encoder else AtomEncoder(hidden_channels, degree_scaling, additional_atom_features, **atom_feature_params)
         if self.inter_message_passing:
             self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
         
         if not self.learned_edge_rep:
             self.bond_encoders = ModuleList()
         else:
-            self.bond_encoder = BondEncoder(hidden_channels)
+            self.bond_encoder = BondEncoder(hidden_channels, **edge_feature_params)
             self.atom2bond = ModuleList()
             self.bond_batch_norms = ModuleList()
             self.bond_convs = ModuleList()
@@ -196,9 +197,9 @@ class HimpNet(torch.nn.Module):
         for _ in range(num_layers):
             #self.bond_encoders.append(Linear(in_channels_edge, hidden_channels))
             if not self.learned_edge_rep:
-                self.bond_encoders.append(BondEncoder(hidden_channels))
+                self.bond_encoders.append(BondEncoder(hidden_channels, **edge_feature_params))
             if self.low_high_edges:
-                self.bond_encoders_low_high.append(BondEncoder(self.hidden_channels_substructure))
+                self.bond_encoders_low_high.append(BondEncoder(self.hidden_channels_substructure, **edge_feature_params))
             nn = Sequential(
                 Linear(hidden_channels, 2 * hidden_channels),
                 BatchNorm1d(2 * hidden_channels),
@@ -233,6 +234,309 @@ class HimpNet(torch.nn.Module):
                     BatchNorm1d(2 * self.hidden_channels_substructure),
                     ReLU(),
                     Linear(2 * self.hidden_channels_substructure, self.hidden_channels_substructure),
+                )
+                if self.higher_level_edge_features:
+                    self.clique_convs.append(GINEConv(nn, train_eps=True, edge_dim = self.hidden_channels))
+                else:
+                    self.clique_convs.append(GINConv(nn, train_eps=True))
+                self.clique_batch_norms.append(BatchNorm1d(self.hidden_channels_substructure))
+                if self.concat:
+                    self.concat_lins.append(Linear(2*hidden_channels, hidden_channels)) #TODO: probably wrong
+                if self.graph_rep:
+                    self.fragment2graph.append(InterMessage(self.hidden_channels_substructure, hidden_channels_graph, **inter_message_params))
+                    self.graph2fragment.append(Linear(hidden_channels_graph, self.hidden_channels_substructure))
+                    
+                    
+
+            self.atom2clique = ModuleList()
+            self.clique2atom = ModuleList()
+
+            for _ in range(num_layers):
+                if not self.fragment_specific:
+                    self.atom2clique.append(
+                        InterMessage(hidden_channels, self.hidden_channels_substructure, **inter_message_params))
+                    self.clique2atom.append(
+                        InterMessage(self.hidden_channels_substructure, hidden_channels, **inter_message_params))
+                else:
+                    self.atom2clique.append(
+                        ModuleList([InterMessage(hidden_channels, self.hidden_channels_substructure, **inter_message_params) for i in range(3)]))
+                    self.clique2atom.append(
+                        ModuleList([InterMessage(self.hidden_channels_substructure, hidden_channels, **inter_message_params) for i in range(3)]))
+                    
+
+
+        self.clique_out = MLP(self.hidden_channels, self.hidden_channels, num_layers = 2, batch_norm = False)
+        self.atom_out = MLP(self.hidden_channels, self.hidden_channels, num_layers = 2, batch_norm = False)
+        if self.learned_edge_rep:
+            self.edge_out = MLP(self.hidden_channels, self.hidden_channels, num_layers = 2, batch_norm = False)
+        #self.mol_out = MLP(self.hidden_channels_mol, self.hidden_channels, num_layers = 2)
+        self.out = MLP(self.hidden_channels, self.out_channels, num_layers = num_layers_out, batch_norm = False, last_relu = False)
+
+    def reset_parameters(self):
+        self.atom_encoder.reset_parameters()
+        self.clique_encoder.reset_parameters()
+
+        for emb, conv, batch_norm in zip(self.bond_encoders, self.atom_convs,
+                                         self.atom_batch_norms):
+            emb.reset_parameters()
+            conv.reset_parameters()
+            batch_norm.reset_parameters()
+
+        for conv, batch_norm in zip(self.clique_convs,
+                                    self.clique_batch_norms):
+            conv.reset_parameters()
+            batch_norm.reset_parameters()
+
+        for lin1, lin2 in zip(self.atom2clique, self.clique2atom):
+            lin1.reset_parameters()
+            lin2.reset_parameters()
+
+        self.atom_lin.reset_parameters()
+        self.clique_lin.reset_parameters()
+        self.lin.reset_parameters()
+
+    def forward(self, data):
+
+        batch_size = torch.max(data.batch) + 1
+        if self.degree_scaling:
+            degrees = degree(data.edge_index[0], dtype = torch.float, num_nodes= data.x.size(0)) 
+            x = self.atom_encoder(data, degrees)
+        else:
+            x = self.atom_encoder(data)
+        
+        if self.inter_message_passing:
+            if self.encoding_size_scaling:
+                x_clique = self.clique_encoder(data.fragment_types)
+            else:
+                x_clique = self.clique_encoder(data.fragments)
+
+        if self.graph_rep:
+            x_graph = torch.zeros(batch_size, dtype = torch.int, device = x.device)
+            x_graph = self.graph_encoder(x_graph)
+
+        if self.learned_edge_rep:
+            x_edge = self.bond_encoder(data.edge_attr)
+
+        for i in range(self.num_layers):
+            if not self.learned_edge_rep:
+                x_edge = self.bond_encoders[i](data.edge_attr)
+            x = self.atom_convs[i](x, data.edge_index, x_edge)
+            x = self.atom_batch_norms[i](x)
+            x = F.relu(x)
+            x = F.dropout(x, self.dropout, training=self.training)
+
+            if self.graph_rep_node:
+                x_graph = x_graph + self.atom2graph[i](x, data.batch, dim_size = batch_size)
+
+            if self.learned_edge_rep:
+                row_edge, col_edge = data.edge_index
+                x_edge = x_edge + self.atom2bond[i](torch.concat([x[row_edge], x[col_edge]], dim = 0), torch.concat([torch.arange(row_edge.size(0), dtype=torch.int64, device = row_edge.device) for _ in range(2)], dim = 0), dim_size = row_edge.size(0))
+                x_edge = self.bond_convs[i](x_edge)
+                x_edge = self.bond_batch_norms[i](x_edge)
+                x_edge = F.relu(x_edge)
+                x_edge = F.dropout(x_edge, self.dropout, training=self.training)
+
+            if self.inter_message_passing:
+                row, col = data.fragments_edge_index
+
+                if self.graph_rep:
+                    #frag to graph
+                    x_graph = x_graph + self.fragment2graph[i](x_clique, data.fragments_batch, dim_size = batch_size)
+
+                if self.fragment_specific:
+                    subgraph_message = torch.zeros_like(x_clique)
+                    edge_masks = [data.fragment_types[data.fragments_edge_index[1], 0] == i for i in range(3)]
+                    for edge_mask, message in zip(edge_masks, self.atom2clique[i]):
+                        subgraph_message += message(x[row[edge_mask]], col[edge_mask], dim_size=x_clique.size(0))
+                    #subgraph_message = F.relu(subgraph_message)
+                else:
+                    subgraph_message = self.atom2clique[i](x[row], col, dim_size=x_clique.size(0))
+                x_clique = x_clique + subgraph_message
+                
+                if self.low_high_edges:
+                    edges, frags = data.low_high_edge_index
+                    edge_attr_new = self.bond_encoders_low_high[i](data.edge_attr)
+                    x_clique = x_clique + scatter(edge_attr_new[edges], frags, dim = 0, dim_size = x_clique.size(0), reduce = "mean")
+
+                if self.higher_message_passing:
+                    if self.higher_level_edge_features:
+                        number_of_higher_edges = data.higher_edge_index.size(1)
+                        higher_edge_id, lower_edge_id = data.join_edge_index
+                        lower_edge_info = scatter(x_edge[lower_edge_id], higher_edge_id, reduce = self.reduction, dim = 0, dim_size = number_of_higher_edges)
+                        higher_edge_id, lower_node_id = data.join_node_index
+                        lower_node_info = scatter(x[lower_node_id], higher_edge_id, reduce = self.reduction, dim = 0, dim_size = number_of_higher_edges)
+                        info = lower_edge_info + lower_node_info
+                        x_clique = self.clique_convs[i](x_clique, data.higher_edge_index, info)
+                    else:
+                        x_clique = self.clique_convs[i](x_clique, data.higher_edge_index)
+
+                # if self.graph_rep:
+                #     #graph to frag
+                #     x_clique = x_clique + F.relu(self.graph2fragment[i](x_graph[data.fragments_batch]))
+
+                
+                x_clique = self.clique_batch_norms[i](x_clique)
+                x_clique = F.relu(x_clique)
+                x_clique = F.dropout(x_clique, self.dropout,
+                                     training=self.training)
+                
+                
+                if self.fragment_specific:
+                    subgraph_message = torch.zeros_like(x)
+                    edge_masks = [data.fragment_types[data.fragments_edge_index[1], 0] == i for i in range(3)]
+                    for edge_mask, message in zip(edge_masks, self.clique2atom[i]):
+                        subgraph_message += message( x_clique[col[edge_mask]], row[edge_mask], dim_size=x.size(0))
+                else:
+                    subgraph_message = self.clique2atom[i](x_clique[col], row, dim_size=x.size(0))
+                if self.concat:
+                    x = self.concat_lins[i](torch.concat([x, subgraph_message], dim = -1))
+                else:
+                    x = x + subgraph_message
+            
+            if self.graph_rep or self.graph_rep_node:
+                x_graph = F.relu(self.graph_conv[i](x_graph))
+                x_graph = self.graph_batch_norms[i](x_graph)
+                if self.graph_rep:
+                    #graph to frag
+                    x_clique = x_clique + F.relu(self.graph2fragment[i](x_graph[data.fragments_batch]))
+                if self.graph_rep_node:
+                    #graph to node
+                    x = x + F.relu(self.graph2atom[i](x_graph[data.batch]))
+
+
+
+        x = scatter(x, data.batch, dim=0, reduce=self.reduction)
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = self.atom_out(x)
+
+        if self.inter_message_passing:
+            x_clique = scatter(x_clique, data.fragments_batch, dim=0, dim_size=x.size(0),
+                               reduce=self.frag_reduction)
+            x_clique = F.dropout(x_clique, self.dropout,
+                                 training=self.training)
+            x_clique = self.clique_out(x_clique)
+            x = x + x_clique
+        
+        if self.learned_edge_rep:
+            edge_batch =  data.batch[data.edge_index[0]]
+            x_edge = scatter(x_edge, edge_batch, dim = 0, dim_size = batch_size, reduce = self.reduction)
+            x_edge = F.dropout(x_edge, self.dropout, training=self.training)
+            x_edge = self.edge_out(x_edge)
+            x = x + x_edge
+        
+        if self.graph_rep:
+            x = x + self.graph_out(x_graph)
+
+        x = F.relu(x)
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = self.out(x)
+        return x
+
+class HimpNetSmall(torch.nn.Module):
+    """Adapted from https://github.com/rusty1s/himp-gnn/blob/master/model.py"""
+
+    def __init__(self, in_channels, in_channels_substructure, in_channels_edge, 
+                 hidden_channels, out_channels, num_layers, dropout=0.0,
+                 linear_atom_encoder = False, encoding_size_scaling = False, rbf = 0,
+                 atom_feature_params = {}, edge_feature_params = {}, 
+                 degree_scaling = False, additional_atom_features = [], 
+                 inter_message_passing=True, higher_message_passing = False, 
+                 low_high_edges = False, fragment_specific = False, 
+                 reduction = "mean", frag_reduction = None, concat = False, graph_rep = False, 
+                 learned_edge_rep = False, higher_level_edge_features = False,
+                 graph_rep_node = False, inter_message_params = {} , hidden_channels_substructure=None,
+                 num_layers_out = 2):
+        super(HimpNetSmall, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_channels_substructure = hidden_channels_substructure if hidden_channels_substructure else hidden_channels
+        self.hidden_channels = hidden_channels
+        self.dropout = dropout
+        self.inter_message_passing = inter_message_passing
+        self.higher_message_passing = higher_message_passing
+        self.low_high_edges = low_high_edges
+        self.encoding_size_scaling = encoding_size_scaling
+        self.rbf = rbf
+        self.degree_scaling = degree_scaling
+        self.fragment_specific = fragment_specific
+        self.reduction = reduction
+        self.frag_reduction = frag_reduction if frag_reduction else reduction
+        self.concat = concat
+        self.graph_rep = graph_rep
+        self.graph_rep_node = graph_rep_node
+        self.learned_edge_rep = learned_edge_rep
+        self.higher_level_edge_features = higher_level_edge_features
+        self.out_channels = out_channels
+
+
+        #self.atom_encoder = Linear(in_channels, hidden_channels)
+        self.atom_encoder = Linear(in_channels, hidden_channels) if linear_atom_encoder else AtomEncoder(hidden_channels, degree_scaling, additional_atom_features, **atom_feature_params)
+        if self.inter_message_passing:
+            self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
+        
+        if not self.learned_edge_rep:
+            self.bond_encoders = ModuleList()
+        else:
+            self.bond_encoder = BondEncoder(hidden_channels, **edge_feature_params)
+            self.atom2bond = ModuleList()
+            self.bond_batch_norms = ModuleList()
+            self.bond_convs = ModuleList()
+
+        if self.graph_rep or self.graph_rep_node:
+            hidden_channels_graph = hidden_channels
+            self.graph_encoder = Embedding(1, hidden_channels_graph)
+
+
+        if self.low_high_edges:
+            self.bond_encoders_low_high = ModuleList()
+        self.atom_convs = ModuleList()
+        self.atom_batch_norms = ModuleList()
+        if self.graph_rep_node:
+            self.atom2graph = ModuleList()
+            self.graph2atom = ModuleList()
+        if self.graph_rep or self.graph_rep_node:
+            self.graph_batch_norms = ModuleList()
+            self.graph_conv = ModuleList()
+
+        for _ in range(num_layers):
+            #self.bond_encoders.append(Linear(in_channels_edge, hidden_channels))
+            if not self.learned_edge_rep:
+                self.bond_encoders.append(BondEncoder(hidden_channels, **edge_feature_params))
+            if self.low_high_edges:
+                self.bond_encoders_low_high.append(BondEncoder(self.hidden_channels_substructure, **edge_feature_params))
+            nn = Sequential(
+                Linear(hidden_channels, hidden_channels),
+                BatchNorm1d(hidden_channels),
+                ReLU(),
+                Linear(hidden_channels, hidden_channels),
+            )
+            self.atom_convs.append(GINEConv(nn, train_eps=True, edge_dim = hidden_channels))
+            self.atom_batch_norms.append(BatchNorm1d(hidden_channels))
+            if self.graph_rep_node:
+                self.atom2graph.append(InterMessage(hidden_channels, hidden_channels_graph, **inter_message_params))
+                self.graph2atom.append(Linear(hidden_channels_graph, hidden_channels))
+            if self.graph_rep or self.graph_rep_node:
+                self.graph_batch_norms.append(BatchNorm1d(hidden_channels_graph))
+                self.graph_conv.append(Linear(hidden_channels_graph, hidden_channels_graph))
+            if self.learned_edge_rep:
+                self.atom2bond.append(InterMessage(hidden_channels, hidden_channels, **inter_message_params))
+                self.bond_batch_norms.append(BatchNorm1d(hidden_channels))
+                self.bond_convs.append(Linear(hidden_channels, hidden_channels))
+
+        if self.inter_message_passing:
+            self.clique_convs = ModuleList()
+            self.clique_batch_norms = ModuleList()
+            if self.graph_rep:
+                self.fragment2graph = ModuleList()
+                self.graph2fragment = ModuleList()
+            if self.concat:
+                self.concat_lins = ModuleList()
+
+            for _ in range(num_layers):
+                nn = Sequential(
+                    Linear(self.hidden_channels_substructure, self.hidden_channels_substructure),
+                    BatchNorm1d(self.hidden_channels_substructure),
+                    ReLU(),
+                    Linear(self.hidden_channels_substructure, self.hidden_channels_substructure),
                 )
                 if self.higher_level_edge_features:
                     self.clique_convs.append(GINEConv(nn, train_eps=True, edge_dim = self.hidden_channels))
@@ -830,7 +1134,7 @@ class MLPReadout(nn.Module):
 
 
 class AtomEncoder(torch.nn.Module):
-    def __init__(self, hidden_channels, degree_scaling = False, additional_encoding = []):
+    def __init__(self, hidden_channels, degree_scaling = False, additional_encoding = [], num_atom_types = 100, num_atom_features = 9 ):
         super(AtomEncoder, self).__init__()
         self.degree_scaling = degree_scaling
         self.hidden_channels = hidden_channels
@@ -842,8 +1146,8 @@ class AtomEncoder(torch.nn.Module):
             additional_sizes = sum([size for keyword, size in additional_encoding])
             self.lin = Linear(hidden_channels + additional_sizes, hidden_channels)
 
-        for i in range(9):
-            self.embeddings.append(Embedding(100, hidden_channels))
+        for i in range(num_atom_features):
+            self.embeddings.append(Embedding(num_atom_types, hidden_channels))
         
 
     def reset_parameters(self):
@@ -871,13 +1175,13 @@ class AtomEncoder(torch.nn.Module):
 
 
 class BondEncoder(torch.nn.Module):
-    def __init__(self, hidden_channels):
+    def __init__(self, hidden_channels, num_bond_types = 6, num_bond_features = 3):
         super(BondEncoder, self).__init__()
 
         self.embeddings = torch.nn.ModuleList()
 
-        for i in range(3):
-            self.embeddings.append(Embedding(6, hidden_channels))
+        for i in range(num_bond_features):
+            self.embeddings.append(Embedding(num_bond_types, hidden_channels))
 
     def reset_parameters(self):
         for embedding in self.embeddings:
