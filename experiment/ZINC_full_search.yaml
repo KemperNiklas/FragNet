@@ -1,9 +1,10 @@
 seml:
   executable: experiment_fragmentation.py
   name: ZINC_full_search
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_full_search
-  project_root_dir: ~/substructure-gnns
-#  description: A first test.
+  output_dir: seml_output
+  project_root_dir: /ceph/ssd/staff/wollschl/substructure-gnns
+  conda_environment: substruct-gnn
+  description: hparam-search-zinc
 
 slurm:
   experiments_per_job: 3
@@ -76,9 +77,9 @@ grid:
   optimization.optimization_params.lr:
     type: choice
     options:
-      - 0.001
-      #- 0.0001
-      #- 0.01
+      # - 0.001
+      - 0.0001
+      - 0.01
   
   optimization.ema_decay:
     type: choice
