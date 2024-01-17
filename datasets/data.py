@@ -1,5 +1,6 @@
 import datasets.fragmentations.fragmentations as frag
-from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol_By_Smiles  #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
+from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol_By_Smiles #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
+from datasets.plogp import FixPlogP
 from typing import Dict, List, Optional, Tuple
 from torch_geometric.datasets import TUDataset, Planetoid, ZINC
 from torch_geometric.data import Data
@@ -325,7 +326,18 @@ def load_fragmentation(dataset,
             split="test")
         data = train_data
         num_classes = 1
-
+    
+    elif dataset == "ZINC-fixed" or dataset == "ZINC-full-fixed":   
+        transformations.insert(0, ZINC_Graph_Add_Mol())
+        transformations.append(FixPlogP())
+        transform = Compose(transformations)
+        subset = True if dataset == "ZINC" else False
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
+        data = train_data
+        num_classes = 1
+    
     elif dataset == "ogbg-molhiv":
         transformations.insert(0, OGB_Graph_Add_Mol_By_Smiles())
         transform = Compose(transformations)
