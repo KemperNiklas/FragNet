@@ -178,7 +178,7 @@ class ExperimentWrapper:
                 "in_channels_edge"] = 4  #TODO: could be different for other datasets
             self.model = HLG_HIMP(**model_params)
         elif model_type == "HimpNetSmall":
-            model_params["in_channels_frag"] = self.num_substructures
+            model_params["in_channels_substructure"] = self.num_substructures
             model_params["in_channels_edge"] = 4 #TODO: could be different for other datasets
             self.model = HimpNetSmall(**model_params)
         else:
