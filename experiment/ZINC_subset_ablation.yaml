@@ -1,7 +1,7 @@
 seml:
   executable: experiment_fragmentation.py
-  name: ZINC_full_search_budget
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_full_search
+  name: ZINC_subset_ablation
+  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_subset_ablation
   project_root_dir: ~/substructure-gnns
 #  description: A first test.
 
@@ -15,13 +15,13 @@ slurm:
     #cpus-per-task: 4  # num cores
     cpus-per-task: 9  # num cores
     #time: 0-00:55     # max time, D-HH:MM
-    time: 4-00:00
+    time: 0-06:00
     #exclude: gpu04,gpu12,gpu13,gpu08,gpu10,mdsi-gpu01,mdsi-gpu02
 
 ###### BEGIN PARAMETER CONFIGURATION ######
 
 fixed:
-  project_name: "ZINC_full_search"
+  project_name: "ZINC_subset_ablation"
   trainer_params:
     max_epochs: 400
     testing: False
@@ -33,8 +33,7 @@ fixed:
     loader_params:
       batch_size: 128
       num_workers: 4
-    dataset: "ZINC-full"
-    #dataset: "ZINC" #TODO: change back to ZINC-full
+    dataset: "ZINC"
     one_hot_edge_features: False
     one_hot_node_features: False
     fragmentation_method: ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
@@ -43,7 +42,7 @@ fixed:
     model_type: "HimpNetSmall"
     classification: False
     model_params:
-      hidden_channels: 120
+      #hidden_channels: 128
       dropout: 0
       num_layers: 3
       inter_message_passing: True
@@ -52,7 +51,6 @@ fixed:
       degree_scaling: False
       learned_edge_rep: True
       inter_message_params.reduction: "mean"
-      reduction: "sum"
       atom_feature_params:
         num_atom_types: 30
         num_atom_features: 1
@@ -74,6 +72,11 @@ fixed:
       patience: 25
 
 grid:
+  model.model_params.hidden_channels:
+    type: choice
+    options:
+      - 120
+
   trainer_params:
     gradient_clip_val:
       type: choice
@@ -100,27 +103,43 @@ grid:
     options:
       #- "sum"
       - "max"
+  
+  model.model_params.reduction:
+    type: choice
+    options:
+      #- "mean"
+      - "sum"
  
+  data.seed:
+    type: choice
+    options:
+      - 23
+      # - 24
+      # - 25
 
-Seed23:
-  fixed: 
-    data.seed: 23
-    ckpt_path: "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints/ZINC_full_search_budget/run-1/ZINC_full_search/kye0ymip/checkpoints/epoch=399-step=687600.ckpt"
-
-Seed24:
+NoOrdinalEncoding:
   fixed:
-    data.seed: 24
-    ckpt_path: "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints/ZINC_full_search_budget/run-2/ZINC_full_search/da7kdhrr/checkpoints/epoch=399-step=687600.ckpt"
+    notes: "NoOrdinalEncoding"
+    model.model_params.encoding_size_scaling: False
 
-Seed25:
+FragRep:
   fixed:
-    data.seed: 25
-    ckpt_path: "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints/ZINC_full_search_budget/run-3/ZINC_full_search/e60q1se1/checkpoints/epoch=399-step=687600.ckpt"
+    notes: "FragRep"
+    model.model_params.higher_message_passing: False
 
-  
 
-  
+NodeFeatures:
+  fixed:
+    notes: "NodeFeatures"
+    model.model_params.higher_message_passing: False
+    model.model_params.inter_message_passing: False
 
+NoFragInfo:
+  fixed:
+    notes: "NoFragInfo"
+    model.model_params.higher_message_passing: False
+    model.model_params.inter_message_passing: False
+    model.model_params.no_frag_info: True
 
 
 

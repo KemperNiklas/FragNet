@@ -1,13 +1,13 @@
 import datasets.fragmentations.fragmentations as frag
 from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol_By_Smiles #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
-from datasets.plogp import FixPlogP
+from datasets.plogp import FixPlogP, LogP
 from typing import Dict, List, Optional, Tuple
 from torch_geometric.datasets import TUDataset, Planetoid, ZINC
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import degree
 from torch_geometric.transforms import OneHotDegree, BaseTransform, Compose, add_positional_encoding
-# from datasets.lrgb import lrgb
+from datasets.lrgb import lrgb
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch.nn.functional import one_hot
 from torch.utils.data import random_split
@@ -331,7 +331,18 @@ def load_fragmentation(dataset,
         transformations.insert(0, ZINC_Graph_Add_Mol())
         transformations.append(FixPlogP())
         transform = Compose(transformations)
-        subset = True if dataset == "ZINC" else False
+        subset = True if dataset == "ZINC-fixed" else False
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
+        data = train_data
+        num_classes = 1
+    
+    elif dataset == "ZINC-logP" or dataset == "ZINC-full-logP":   
+        transformations.insert(0, ZINC_Graph_Add_Mol())
+        transformations.append(LogP())
+        transform = Compose(transformations)
+        subset = True if dataset == "ZINC-logP" else False
         train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
         val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
         test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")

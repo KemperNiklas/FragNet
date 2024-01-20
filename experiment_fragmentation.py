@@ -236,7 +236,7 @@ class ExperimentWrapper:
         self.init_optimizer()
 
     @ex.capture()
-    def train(self, trainer_params, project_name, _config, notes=""):
+    def train(self, trainer_params, project_name, _config, notes="", ckpt_path=None):
 
         checkpoint_directory = f"{checkpoint_dir}/{_config['db_collection']}/run-{_config['overwrite']}"
         if not os.path.exists(checkpoint_directory):
@@ -289,7 +289,8 @@ class ExperimentWrapper:
 
         trainer.fit(self.lightning_model,
                     train_dataloaders=self.train_loader,
-                    val_dataloaders=self.val_loader)
+                    val_dataloaders=self.val_loader,
+                    ckpt_path= ckpt_path)
         if trainer_params["testing"] == True:
             result = trainer.test(self.lightning_model, self.test_loader)
             wandb.finish()

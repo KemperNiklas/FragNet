@@ -14,7 +14,7 @@ class GCN(Module):
         self.graph_level = graph_level
         self.pool_reduction = pool_reduction
         self.dropout = dropout
-        self.feature_encoder = Linear(in_channels, hidden_channels)
+        self.feature_encoder = AtomEncoder(hidden_channels)
         
         self.residual = residual
         
@@ -440,7 +440,7 @@ class HimpNetSmall(torch.nn.Module):
                  linear_atom_encoder = False, encoding_size_scaling = False, rbf = 0,
                  atom_feature_params = {}, edge_feature_params = {}, 
                  degree_scaling = False, additional_atom_features = [], 
-                 inter_message_passing=True, higher_message_passing = False, 
+                 inter_message_passing=True, higher_message_passing = False, no_frag_info = False,
                  low_high_edges = False, fragment_specific = False, 
                  reduction = "mean", frag_reduction = None, concat = False, graph_rep = False, 
                  learned_edge_rep = False, higher_level_edge_features = False,
@@ -453,6 +453,7 @@ class HimpNetSmall(torch.nn.Module):
         self.dropout = dropout
         self.inter_message_passing = inter_message_passing
         self.higher_message_passing = higher_message_passing
+        self.no_frag_info = no_frag_info
         self.low_high_edges = low_high_edges
         self.encoding_size_scaling = encoding_size_scaling
         self.rbf = rbf
@@ -470,8 +471,8 @@ class HimpNetSmall(torch.nn.Module):
 
         #self.atom_encoder = Linear(in_channels, hidden_channels)
         self.atom_encoder = Linear(in_channels, hidden_channels) if linear_atom_encoder else AtomEncoder(hidden_channels, degree_scaling, additional_atom_features, **atom_feature_params)
-        if self.inter_message_passing:
-            self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
+
+        self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
         
         if not self.learned_edge_rep:
             self.bond_encoders = ModuleList()
@@ -566,8 +567,6 @@ class HimpNetSmall(torch.nn.Module):
                     self.clique2atom.append(
                         ModuleList([InterMessage(self.hidden_channels_substructure, hidden_channels, **inter_message_params) for i in range(3)]))
                     
-
-
         self.clique_out = MLP(self.hidden_channels, self.hidden_channels, num_layers = 2, batch_norm = False)
         self.atom_out = MLP(self.hidden_channels, self.hidden_channels, num_layers = 2, batch_norm = False)
         if self.learned_edge_rep:
@@ -607,11 +606,16 @@ class HimpNetSmall(torch.nn.Module):
         else:
             x = self.atom_encoder(data)
         
-        if self.inter_message_passing:
-            if self.encoding_size_scaling:
-                x_clique = self.clique_encoder(data.fragment_types)
-            else:
-                x_clique = self.clique_encoder(data.fragments)
+        
+
+        if self.encoding_size_scaling:
+            x_clique = self.clique_encoder(data.fragment_types)
+        else:
+            x_clique = self.clique_encoder(data.fragments)
+        
+        if not self.inter_message_passing and not self.no_frag_info:
+            # append frag information as node features
+            x = x + x_clique
 
         if self.graph_rep:
             x_graph = torch.zeros(batch_size, dtype = torch.int, device = x.device)
