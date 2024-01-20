@@ -23,7 +23,7 @@ slurm:
 fixed:
   project_name: "ZINC_full_search"
   trainer_params:
-    max_epochs: 400
+    max_epochs: 800
     testing: False
     min_lr: 1e-8
 
