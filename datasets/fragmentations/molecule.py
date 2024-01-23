@@ -5,7 +5,7 @@ from typing import Union
 
 import networkx as nx
 from rdkit import Chem
-from rdkit.Chem.Draw import rdMolDraw2D
+#from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Chem.rdchem import Mol as RDKitMol
 import numpy as np
 

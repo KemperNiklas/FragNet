@@ -92,10 +92,36 @@ def penalized_logp_fix(mol):
 
     return normalized_log_p, normalized_SA, normalized_cycle, y
 
+def logp(mol):
+    # normalization constants, statistics from 250k_rndm_zinc_drugs_clean.smi
+    logP_mean = 2.4570953396190123
+    logP_std = 1.434324401111988
+    SA_mean = -3.0525811293166134
+    SA_std = 0.8335207024513095
+
+    log_p = Descriptors.MolLogP(mol)
+    SA = -sascorer.calculateScore(mol)
+
+    normalized_log_p = (log_p - logP_mean) / logP_std
+    normalized_SA = (SA - SA_mean) / SA_std
+    #normalized_cycle = (cycle_score - cycle_mean) / cycle_std
+    
+    y = normalized_log_p + normalized_SA 
+
+    return normalized_log_p, normalized_SA, y
+
 class FixPlogP(BaseTransform):
     def __init__(self):
         super(FixPlogP, self).__init__()
 
     def __call__(self, data):
         data.y = penalized_logp_fix(data.mol)[3]
+        return data
+    
+class LogP(BaseTransform):
+    def __init__(self):
+        super(LogP, self).__init__()
+
+    def __call__(self, data):
+        data.y = logp(data.mol)[2]
         return data
