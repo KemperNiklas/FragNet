@@ -1,8 +1,8 @@
 seml:
   executable: experiment_fragmentation.py
   name: ZINC_full_search_budget
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_full_search
-  project_root_dir: ~/substructure-gnns
+  output_dir: seml_output
+  project_root_dir: /ceph/ssd/staff/wollschl/substructure-gnns
 #  description: A first test.
 
 slurm:
@@ -15,15 +15,20 @@ slurm:
     #cpus-per-task: 4  # num cores
     cpus-per-task: 9  # num cores
     #time: 0-00:55     # max time, D-HH:MM
-    time: 4-00:00
-    #exclude: gpu04,gpu12,gpu13,gpu08,gpu10,mdsi-gpu01,mdsi-gpu02
+    time: 8-00:00
+    partition: ['gpu_limited']
+    exclude: gpu04,gpu12,gpu13,gpu08,gpu10
 
 ###### BEGIN PARAMETER CONFIGURATION ######
 
 fixed:
   project_name: "ZINC_full_search"
   trainer_params:
+<<<<<<< HEAD
+    max_epochs: 1000
+=======
     max_epochs: 800
+>>>>>>> 99760b3a57b8dce4da8e3266c39a36132b9966d0
     testing: False
     min_lr: 1e-8
 
@@ -70,8 +75,8 @@ fixed:
     loss: "mae"
     scheduler_parameters:
       mode: "min"
-      factor: 0.5
-      patience: 25
+      factor: 0.9
+      cooldown: 5
 
 grid:
   trainer_params:
@@ -80,9 +85,16 @@ grid:
       options:
         - 1
 
+  optimization.scheduler_parameters.patience:
+    type: choice
+    options:
+      - 5
+      - 15
+
   optimization.optimization_params.lr:
     type: choice
     options:
+      - 0.0001
       - 0.001
       #- 0.0001
       #- 0.01
