@@ -15,8 +15,8 @@ slurm:
     #cpus-per-task: 4  # num cores
     cpus-per-task: 9  # num cores
     #time: 0-00:55     # max time, D-HH:MM
-    time: 4-00:00
-    partition: ['gpu_all']
+    time: 8-00:00
+    partition: ['gpu_limited']
     exclude: gpu04,gpu12,gpu13,gpu08,gpu10
 
 ###### BEGIN PARAMETER CONFIGURATION ######
@@ -24,7 +24,7 @@ slurm:
 fixed:
   project_name: "ZINC_full_search"
   trainer_params:
-    max_epochs: 400
+    max_epochs: 1000
     testing: False
     min_lr: 1e-8
 
@@ -71,8 +71,8 @@ fixed:
     loss: "mae"
     scheduler_parameters:
       mode: "min"
-      factor: 0.5
-      patience: 25
+      factor: 0.9
+      cooldown: 5
 
 grid:
   trainer_params:
@@ -81,9 +81,16 @@ grid:
       options:
         - 1
 
+  optimization.scheduler_parameters.patience:
+    type: choice
+    options:
+      - 5
+      - 15
+
   optimization.optimization_params.lr:
     type: choice
     options:
+      - 0.0001
       - 0.001
       #- 0.0001
       #- 0.01
