@@ -179,7 +179,8 @@ class ExperimentWrapper:
             self.model = HLG_HIMP(**model_params)
         elif model_type == "HimpNetSmall":
             model_params["in_channels_substructure"] = self.num_substructures
-            model_params["in_channels_edge"] = 4 #TODO: could be different for other datasets
+            model_params[
+                "in_channels_edge"] = 4  #TODO: could be different for other datasets
             self.model = HimpNetSmall(**model_params)
         else:
             raise RuntimeError(f"Model {model_type} not supported")
@@ -269,11 +270,10 @@ class ExperimentWrapper:
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
                 detect_anomaly=True,
                 callbacks=[
-                    EarlyStopping(monitor="lr",
+                    EarlyStopping(monitor="val_loss",
                                   mode="min",
-                                  stopping_threshold=trainer_params["min_lr"],
-                                  check_on_train_epoch_end=True,
-                                  min_delta=-1)
+                                  patience=50,
+                                  verbose=True)
                 ],
                 **additional_params)
         else:
