@@ -74,6 +74,14 @@ fixed:
 
 grid:
 
+  optimization.optimization_params.weight_decay:
+    type: choice
+    options:
+      - 0
+      #- 5e-4
+
+
+
   model.model_params.hidden_channels:
     type: choice
     options:
