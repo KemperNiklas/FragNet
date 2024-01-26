@@ -26,7 +26,7 @@ fixed:
   trainer_params:
     max_epochs: 2000 # has to be changed below too
     testing: False
-    min_lr: 1e-8
+    min_lr: 1e-6
 
   data:
     #seed: 40
@@ -71,6 +71,7 @@ fixed:
       name: "cosine_with_warmup"
       num_warmup_epochs: 50
       max_epochs: 2000 #has to be changed above too
+      min_lr: 1e-6
 
 grid:
 
