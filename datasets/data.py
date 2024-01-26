@@ -8,6 +8,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.utils import degree
 from torch_geometric.transforms import OneHotDegree, BaseTransform, Compose, add_positional_encoding
 from datasets.lrgb import lrgb
+from datasets.count_substructures import CountSubstructures
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch.nn.functional import one_hot
 from torch.utils.data import random_split
@@ -227,7 +228,8 @@ def load_fragmentation(dataset,
                        encoding=None,
                        subset_frac=1,
                        higher_edge_features=False,
-                       dataset_seed=None):
+                       dataset_seed=None,
+                       **kwargs):
 
     if fragmentation_method:
         frag_type, frag_usage, vocab_size_params = fragmentation_method
@@ -348,6 +350,18 @@ def load_fragmentation(dataset,
         test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
         data = train_data
         num_classes = 1
+    
+    elif dataset == "ZINC-count":
+        transformations.insert(0, ZINC_Graph_Add_Mol())
+        substructure_idx = kwargs["substructure_idx"] if "substructure_idx" in kwargs else None
+        transformations.insert(1, CountSubstructures(substructure_idx = substructure_idx))
+        transform = Compose(transformations)
+        subset = True
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "test")
+        data = train_data
+        num_classes = 1 if substructure_idx else 15
     
     elif dataset == "ogbg-molhiv":
         transformations.insert(0, OGB_Graph_Add_Mol_By_Smiles())

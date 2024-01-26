@@ -178,3 +178,4 @@ cython_debug/
 wandb/
 datasets/data/
 seml_output/
+stuff/

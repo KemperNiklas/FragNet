@@ -109,11 +109,16 @@ class MagnetVocab(BaseTransform):
     def __init__(self, vocab_size = 200):
         self.max_vocab_size = vocab_size
         self.hash_counter = Counter()
+        self.hash_to_smiles = {}
     
     def __call__(self, graph):
         mols = Chem.Mol(graph.mol) #create copy of molecule
         for mol in Chem.rdmolops.GetMolFrags(mols, asMols = True):
-            hashes = MolDecomposition(mol).id_to_hash.values()
+            decomposition = MolDecomposition(mol)
+            hashes = decomposition.id_to_hash.values()
+            for (id,hash) in decomposition.id_to_hash.items():
+                if hash not in self.hash_to_smiles and hash != -1:
+                    self.hash_to_smiles[hash] = decomposition.id_to_fragment[id]
             self.hash_counter.update(hashes)
     
     def get_vocab(self):

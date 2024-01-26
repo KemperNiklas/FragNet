@@ -13,7 +13,7 @@ from models.lightning_progress_bar import MeterlessProgressBar
 
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
+from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 import wandb
 import os
 
@@ -273,7 +273,8 @@ class ExperimentWrapper:
                     EarlyStopping(monitor="val_loss",
                                   mode="min",
                                   patience=50,
-                                  verbose=True)
+                                  verbose=True),
+                    ModelCheckpoint(monitor="val_loss")
                 ],
                 **additional_params)
         else:
@@ -285,6 +286,13 @@ class ExperimentWrapper:
                 default_root_dir=
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
                 detect_anomaly=True,
+                callbacks=[
+                    EarlyStopping(monitor="val_loss",
+                                  mode="min",
+                                  patience=50,
+                                  verbose=True),
+                    ModelCheckpoint(monitor="val_loss")
+                ],
                 **additional_params)
 
         trainer.fit(self.lightning_model,

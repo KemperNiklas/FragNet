@@ -1,0 +1,89 @@
+seml:
+  executable: experiment_fragmentation.py
+  name: HIMP_mol_hiv
+  output_dir: /ceph/hdd/students/kempern/experiment/logs/HIMP_mol_hiv
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 4
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    #mem: 32G          # memory
+    cpus-per-task: 4  # num cores
+    #cpus-per-task: 2  # num cores
+    time: 0-06:00     # max time, D-HH:MM
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "HIMP_mol_hiv"
+  trainer_params:
+    max_epochs: 200
+    testing: False
+    min_lr: 1e-6
+    gradient_clip_val: 1.0
+
+  data:
+    dataset_params.dataset_seed: 0
+    #seed: 31
+    loader_params:
+      batch_size: 128
+      num_workers: 4
+      val_batch_size: 1000
+    dataset: "ogbg-molhiv"
+    one_hot_edge_features: False
+    one_hot_node_features: False
+    fragmentation_method: ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
+    
+    
+  model:
+    model_type: "HimpNetSmall"
+    classification: True
+    model_params:
+      hidden_channels: 64
+      dropout: 0.5
+      #num_layers: 2
+      inter_message_passing: True
+      higher_message_passing: True
+      encoding_size_scaling: True
+      degree_scaling: False
+      learned_edge_rep: True
+      inter_message_params.reduction: "mean"
+      frag_reduction: "sum"
+      reduction: "sum"
+
+  optimization:
+    optimization_params:
+      lr: 0.0001
+      #weight_decay: 5e-4
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 30
+    additional_metric: "auroc"
+
+grid:
+  data.seed:
+    type: choice
+    options:
+      - 23
+      - 24
+      - 25
+  
+  model.model_params.num_layers:
+    type: choice
+    options:
+      - 2
+      - 3
+  
+  optimization.ema_decay:
+    type: choice
+    options:
+      - 0.99
+      #- 0.999
+      - None
+
+

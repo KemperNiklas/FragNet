@@ -6,7 +6,7 @@ seml:
 #  description: A first test.
 
 slurm:
-  experiments_per_job: 3
+  experiments_per_job: 5
   max_simultaneous_jobs: 8  # Restrict number of simultaneously running jobs per job array
   sbatch_options:
     gres: gpu:1       # num GPUs
@@ -16,6 +16,7 @@ slurm:
     cpus-per-task: 9  # num cores
     #time: 0-00:55     # max time, D-HH:MM
     time: 0-09:00
+    partition: gpu_all
     #exclude: gpu04,gpu12,gpu13,gpu08,gpu10,mdsi-gpu01,mdsi-gpu02
 
 ###### BEGIN PARAMETER CONFIGURATION ######
@@ -41,9 +42,9 @@ fixed:
     model_type: "HimpNetSmall"
     classification: True
     model_params:
-      dropout: 0.15
+      #dropout: 0.15
       out_channels: 10
-      num_layers: 3
+      #num_layers: 3
       inter_message_passing: True
       higher_message_passing: True
       encoding_size_scaling: True
@@ -85,12 +86,12 @@ grid:
     options:
       - 0.99
       #- 0.999
-      - None
+      #- None
 
   model.model_params.num_layers_out:
     type: choice
     options:
-      - 2
+      #- 2
       - 3
 
   model.model_params.frag_reduction:
@@ -105,7 +106,21 @@ grid:
       #- "mean"
       - "sum"
 
- 
+  model.model_params.num_layers:
+    type: choice
+    options:
+      - 2
+      - 3
+      - 4
+
+  model.model_params.dropout:
+    type: choice
+    options:
+      - 0
+      - 0.1
+      - 0.15
+      - 0.2
+
   data.seed:
     type: choice
     options:

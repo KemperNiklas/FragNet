@@ -9,7 +9,7 @@ import torch
 from models.layers import MLP
 
 class GCN(Module):
-    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, dropout = 0.5, residual = False, batch_norm = False, graph_level = False, pool_reduction = "sum"):
+    def __init__(self, hidden_channels, out_channels, in_channels, num_layers, dropout = 0, residual = False, batch_norm = False, graph_level = False, pool_reduction = "sum"):
         super().__init__()
         self.graph_level = graph_level
         self.pool_reduction = pool_reduction
@@ -26,12 +26,12 @@ class GCN(Module):
             self.layers.append(GCNConv(hidden_channels, hidden_channels))
             if batch_norm:
                 self.batch_norms.append(BatchNorm(in_channels = hidden_channels))
-        self.out = MLPReadout(hidden_channels, output_dim= 1)
+        self.out = MLPReadout(hidden_channels, output_dim= out_channels)
 
     def forward(self, data):
-        x = data.x
+
         edge_index = data.edge_index
-        x = self.feature_encoder(x)
+        x = self.feature_encoder(data)
         for layer_ind, layer in enumerate(self.layers):
             
             if self.residual:
@@ -739,6 +739,103 @@ class HimpNetSmall(torch.nn.Module):
         x = self.out(x)
         return x
 
+class HimpNetSmallGraphLevel(torch.nn.Module):
+    """Adapted from https://github.com/rusty1s/himp-gnn/blob/master/model.py"""
+
+    def __init__(self, in_channels, 
+                 hidden_channels, out_channels, num_layers, dropout=0.0, encoding_size_scaling = False,
+                 inter_message_passing=True, higher_message_passing = True, inter_message_params = {}):
+        
+        super(HimpNetSmallGraphLevel, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_channels_substructure = hidden_channels
+        self.hidden_channels = hidden_channels
+        self.dropout = dropout
+        self.inter_message_passing = inter_message_passing
+        self.higher_message_passing = higher_message_passing
+
+        self.encoding_size_scaling = encoding_size_scaling
+        self.out_channels = out_channels
+        
+        self.atom_encoding = MLP(in_channels, hidden_channels, num_layers = 2, batch_norm = False, last_relu = False)
+        self.atom_convs = ModuleList()
+
+
+        for layer_ind in range(num_layers):
+            #self.bond_encoders.append(Linear(in_channels_edge, hidden_channels))
+
+            nn = Sequential(
+                Linear(hidden_channels, hidden_channels),
+                ReLU(),
+                Linear(hidden_channels, hidden_channels),
+            )
+            self.atom_convs.append(GINConv(nn, train_eps=True))
+
+
+        if self.inter_message_passing:
+            self.clique_convs = ModuleList()
+
+            for _ in range(num_layers):
+                nn = Sequential(
+                    Linear(self.hidden_channels, self.hidden_channels),
+                    ReLU(),
+                    Linear(self.hidden_channels, self.hidden_channels),
+                )
+
+                self.clique_convs.append(GINConv(nn, train_eps=True))
+              
+
+            self.atom2clique = ModuleList()
+            self.clique2atom = ModuleList()
+
+            for _ in range(num_layers):
+
+                self.atom2clique.append(
+                    InterMessage(hidden_channels, hidden_channels, **inter_message_params))
+                self.clique2atom.append(
+                    InterMessage(hidden_channels, hidden_channels, **inter_message_params))
+                    
+        self.atom_out = MLP(self.hidden_channels, self.out_channels, num_layers = 2, batch_norm = False, last_relu = False)
+
+
+    def forward(self, data):
+        x_clique = torch.zeros((data.fragments.size(0), self.hidden_channels), device = data.fragments.device)
+        x = data.x
+        x = self.atom_encoding(x)
+
+        for i in range(self.num_layers):
+ 
+            x = self.atom_convs[i](x, data.edge_index)
+            x = F.relu(x)
+            x = F.dropout(x, self.dropout, training=self.training)
+
+
+            if self.inter_message_passing:
+                row, col = data.fragments_edge_index
+
+                subgraph_message = self.atom2clique[i](x[row], col, dim_size=x_clique.size(0))
+                x_clique = x_clique + subgraph_message
+                
+
+                if self.higher_message_passing:
+                    x_clique = self.clique_convs[i](x_clique, data.higher_edge_index)
+
+                # if self.graph_rep:
+                #     #graph to frag
+                #     x_clique = x_clique + F.relu(self.graph2fragment[i](x_graph[data.fragments_batch]))
+
+                
+                x_clique = F.relu(x_clique)
+                x_clique = F.dropout(x_clique, self.dropout,
+                                     training=self.training)
+                
+                subgraph_message = self.clique2atom[i](x_clique[col], row, dim_size=x.size(0))
+                x = x + subgraph_message
+            
+
+        x = self.atom_out(x)
+        return x
+    
 class HimpNetAlternative(torch.nn.Module):
     """Adapted from https://github.com/rusty1s/himp-gnn/blob/master/model.py"""
 
