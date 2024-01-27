@@ -17,6 +17,8 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, Mode
 import wandb
 import os
 
+from torch_geometric.seed import seed_everything
+
 checkpoint_dir = "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints"
 ex = Experiment()
 seml.setup_logger(ex)
@@ -82,8 +84,9 @@ class ExperimentWrapper:
             If dataset_seed in dataset_params: Seperate seed for the dataset split.
         """
         print(f"Dataset received config: {_config}")
-        if seed:
-            torch.manual_seed(seed)
+        if seed is not None:
+            #torch.manual_seed(seed)
+            seed_everything(seed)
 
         if fragmentation_method:
             self.num_substructures = fragmentation_method[2]["vocab_size"]
@@ -260,6 +263,11 @@ class ExperimentWrapper:
             }
         else:
             additional_params = {}
+        
+        monitor = trainer_params["monitor"] if "monitor" in trainer_params else "val_loss"
+        mode = "min" if monitor == "val_loss" else "max"
+        patience = trainer_params["patience_early_stopping"] if "patience_early_stopping" in trainer_params else 50
+
         if "min_lr" in trainer_params:
             trainer = Trainer(
                 max_epochs=trainer_params["max_epochs"],
@@ -270,11 +278,11 @@ class ExperimentWrapper:
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
                 detect_anomaly=True,
                 callbacks=[
-                    EarlyStopping(monitor="val_loss",
-                                  mode="min",
-                                  patience=50,
+                    EarlyStopping(monitor=monitor,
+                                  mode=mode,
+                                  patience=patience,
                                   verbose=True),
-                    ModelCheckpoint(monitor="val_loss")
+                    ModelCheckpoint(monitor=monitor, mode = mode)
                 ],
                 **additional_params)
         else:
@@ -287,11 +295,11 @@ class ExperimentWrapper:
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
                 detect_anomaly=True,
                 callbacks=[
-                    EarlyStopping(monitor="val_loss",
-                                  mode="min",
-                                  patience=50,
+                    EarlyStopping(monitor=monitor,
+                                  mode=mode,
+                                  patience=patience,
                                   verbose=True),
-                    ModelCheckpoint(monitor="val_loss")
+                    ModelCheckpoint(monitor=monitor, mode = mode)
                 ],
                 **additional_params)
 
