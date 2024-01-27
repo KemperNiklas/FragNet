@@ -1,8 +1,8 @@
 seml:
   executable: experiment_fragmentation.py
-  name: ZINC_subset_cosine
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/ZINC_subset_cosine
-  project_root_dir: ~/substructure-gnns
+  name: ZINC_subset_cosine_weight_decay_longer_patience
+  output_dir: seml_output
+  project_root_dir: ..
 #  description: A first test.
 
 slurm:
@@ -32,7 +32,7 @@ fixed:
     #seed: 40
     dataset_params.dataset_seed: 0
     loader_params:
-      batch_size: 128
+      batch_size: 32
       num_workers: 4
     dataset: "ZINC"
     one_hot_edge_features: False
@@ -43,7 +43,7 @@ fixed:
     model_type: "HimpNetSmall"
     classification: False
     model_params:
-      #hidden_channels: 128
+      # hidden_channels: 64
       dropout: 0
       num_layers: 3
       inter_message_passing: True
@@ -74,11 +74,11 @@ fixed:
       min_lr: 1e-6
 
 grid:
-
   optimization.optimization_params.weight_decay:
     type: choice
     options:
-      - 0
+      - 1e-3
+      - 1e-4
       #- 5e-4
 
 
