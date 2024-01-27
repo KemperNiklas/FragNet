@@ -272,7 +272,6 @@ class ExperimentWrapper:
             trainer = Trainer(
                 max_epochs=trainer_params["max_epochs"],
                 logger=wandb_logger,
-                enable_progress_bar=True,
                 log_every_n_steps=15,
                 default_root_dir=
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
@@ -290,7 +289,6 @@ class ExperimentWrapper:
             trainer = Trainer(
                 max_epochs=trainer_params["max_epochs"],
                 logger=wandb_logger,
-                enable_progress_bar=True,
                 log_every_n_steps=15,
                 default_root_dir=
                 f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
