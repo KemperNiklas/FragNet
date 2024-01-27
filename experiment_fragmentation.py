@@ -284,6 +284,7 @@ class ExperimentWrapper:
                                   verbose=True),
                     ModelCheckpoint(monitor=monitor, mode = mode)
                 ],
+                enable_progress_bar=False,
                 **additional_params)
         else:
             trainer = Trainer(
@@ -301,6 +302,7 @@ class ExperimentWrapper:
                                   verbose=True),
                     ModelCheckpoint(monitor=monitor, mode = mode)
                 ],
+                enable_progress_bar=False,
                 **additional_params)
 
         trainer.fit(self.lightning_model,

@@ -44,7 +44,7 @@ class LightningModel(pl.LightningModule):
         self.log("train_loss",
                  loss,
                  on_epoch=True,
-                 on_step=False,
+                 on_step=True,
                  prog_bar=False,
                  batch_size=_calculate_batch_size(data))
         return loss
