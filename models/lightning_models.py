@@ -255,7 +255,6 @@ def average_multilabel_precision(xhat, data, mode: str):
         loss = metric(xhat[mask], torch.squeeze(data.y[mask]).long())
     else:
         loss = metric(xhat, torch.squeeze(data.y).long())
-    print(loss)
     return loss
 
 

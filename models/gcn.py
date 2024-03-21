@@ -615,7 +615,8 @@ class HimpNetSmall(torch.nn.Module):
         
         if not self.inter_message_passing and not self.no_frag_info:
             # append frag information as node features
-            x = x + x_clique
+            row, col = data.fragments_edge_index
+            x = x + scatter(x_clique[col], row, dim = 0, dim_size = x.size(0), reduce = self.reduction)
 
         if self.graph_rep:
             x_graph = torch.zeros(batch_size, dtype = torch.int, device = x.device)
