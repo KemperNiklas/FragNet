@@ -101,6 +101,30 @@ grid:
       - 23
       - 24
       - 25
+
+NoOrdinalEncoding:
+  fixed:
+    notes: "NoOrdinalEncoding"
+    model.model_params.encoding_size_scaling: False
+
+FragRep:
+  fixed:
+    notes: "FragRep"
+    model.model_params.higher_message_passing: False
+
+
+NodeFeatures:
+  fixed:
+    notes: "NodeFeatures"
+    model.model_params.higher_message_passing: False
+    model.model_params.inter_message_passing: False
+
+NoFragInfo:
+  fixed:
+    notes: "NoFragInfo"
+    model.model_params.higher_message_passing: False
+    model.model_params.inter_message_passing: False
+    model.model_params.no_frag_info: True
   
 
 
