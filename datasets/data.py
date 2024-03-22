@@ -20,7 +20,7 @@ TU_DATASETS = [
 ]
 PLANETOID_DATASETS = ["Cora", "CiteSeer", "PubMed"]
 
-VOCAB_ROOT = "./datasets/data"
+VOCAB_ROOT = "/ceph/hdd/students/kempern/datasets"
 DATASET_ROOT = "/ceph/hdd/students/kempern/datasets"
 
 
@@ -361,7 +361,7 @@ def load_fragmentation(dataset,
         val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "val")
         test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "test")
         data = train_data
-        num_classes = 1 if substructure_idx else 15
+        num_classes = 15 if substructure_idx is None else 1
     
     elif dataset == "ogbg-molhiv":
         transformations.insert(0, OGB_Graph_Add_Mol_By_Smiles())
@@ -486,26 +486,26 @@ def get_vocab(dataset: str,
             # create vocab
             if dataset == "ZINC" or dataset == "ZINC-full":
                 subset = True if dataset == "ZINC" else False
-                vocab_data = ZINC(root=f'{root}/{dataset}/{dataset}_mol',
+                vocab_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_mol',
                                   pre_transform=ZINC_Graph_Add_Mol(),
                                   subset=subset,
                                   split="train")
             elif dataset == "ogbg-molhiv":
                 vocab_data = PygGraphPropPredDataset(
                     name=dataset,
-                    root=f'{root}/{dataset}/{dataset}_mol',
+                    root=f'{DATASET_ROOT}/{dataset}/{dataset}_mol',
                     pre_transform=OGB_Graph_Add_Mol_By_Smiles())
                 split_idx = vocab_data.get_idx_split()
                 vocab_data = vocab_data[split_idx["train"]]
             elif dataset == "peptides-struct":
                 vocab_data = lrgb.PeptidesStructuralDataset(
-                    root=f'{root}/{dataset}/{dataset}_mol',
+                    root=f'{DATASET_ROOT}/{dataset}/{dataset}_mol',
                     smiles2graph=lrgb.smiles2graph_add_mol)
                 split_idx = vocab_data.get_idx_split()
                 vocab_data = vocab_data[split_idx["train"]]
             elif dataset == "peptides-func":
                 vocab_data = lrgb.PeptidesFunctionalDataset(
-                    root=f'{root}/{dataset}/{dataset}_mol',
+                    root=f'{DATASET_ROOT}/{dataset}/{dataset}_mol',
                     smiles2graph=lrgb.smiles2graph_add_mol)
                 split_idx = vocab_data.get_idx_split()
                 vocab_data = vocab_data[split_idx["train"]]
