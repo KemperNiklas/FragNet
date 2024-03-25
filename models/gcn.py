@@ -137,7 +137,8 @@ class HimpNet(torch.nn.Module):
                  linear_atom_encoder = False, encoding_size_scaling = False, rbf = 0,
                  atom_feature_params = {}, edge_feature_params = {}, 
                  degree_scaling = False, additional_atom_features = [], 
-                 inter_message_passing=True, higher_message_passing = False, 
+                 inter_message_passing=True, higher_message_passing = False,
+                 no_frag_info = False, 
                  low_high_edges = False, fragment_specific = False, 
                  reduction = "mean", frag_reduction = None, concat = False, graph_rep = False, 
                  learned_edge_rep = False, higher_level_edge_features = False,
@@ -163,12 +164,13 @@ class HimpNet(torch.nn.Module):
         self.learned_edge_rep = learned_edge_rep
         self.higher_level_edge_features = higher_level_edge_features
         self.out_channels = out_channels
+        self.no_frag_info = no_frag_info
 
 
         #self.atom_encoder = Linear(in_channels, hidden_channels)
         self.atom_encoder = Linear(in_channels, hidden_channels) if linear_atom_encoder else AtomEncoder(hidden_channels, degree_scaling, additional_atom_features, **atom_feature_params)
-        if self.inter_message_passing:
-            self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
+
+        self.clique_encoder = CliqueEncoder(in_channels_substructure, self.hidden_channels_substructure, encoding_size_scaling, rbf)
         
         if not self.learned_edge_rep:
             self.bond_encoders = ModuleList()
@@ -304,11 +306,15 @@ class HimpNet(torch.nn.Module):
         else:
             x = self.atom_encoder(data)
         
-        if self.inter_message_passing:
-            if self.encoding_size_scaling:
-                x_clique = self.clique_encoder(data.fragment_types)
-            else:
-                x_clique = self.clique_encoder(data.fragments)
+        if self.encoding_size_scaling:
+            x_clique = self.clique_encoder(data.fragment_types)
+        else:
+            x_clique = self.clique_encoder(data.fragments)
+        
+        if not self.inter_message_passing and not self.no_frag_info:
+            # append frag information as node features
+            row, col = data.fragments_edge_index
+            x = x + scatter(x_clique[col], row, dim = 0, dim_size = x.size(0), reduce = self.reduction)
 
         if self.graph_rep:
             x_graph = torch.zeros(batch_size, dtype = torch.int, device = x.device)
