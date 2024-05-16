@@ -1,17 +1,31 @@
-import pytorch_lightning as pl
-import torch.nn.functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-import torch
-from torchmetrics.classification import BinaryAUROC, MultilabelAveragePrecision
-from torch_ema import ExponentialMovingAverage
-from typing import Optional, Callable
-from copy import deepcopy
 import math
+from copy import deepcopy
+
+import pytorch_lightning as pl
+import torch
+import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.optim.optimizer import Optimizer
+from torch_ema import ExponentialMovingAverage
+from torchmetrics.classification import (BinaryAUROC, BinaryPrecision,
+                                         BinaryRecall,
+                                         MultilabelAveragePrecision)
 
 
 class LightningModel(pl.LightningModule):
+    """
+    LightningModel is a PyTorch Lighning wrapper for custom models.
+
+    Args:
+        model: The underlying model.
+        loss: The loss function used for training and testing.
+        acc: The accuracy metric used for evaluation.
+        optimizer_parameters: A dictionary of parameters for the optimizer.
+        scheduler_parameters: A dictionary of parameters for the learning rate scheduler (optional).
+        additional_metric: Additional metric or list of additional metrics used for evaluation of validation and test steps (optional).
+        ema_decay: The decay factor for the Exponential Moving Average (EMA) of model parameters (optional).
+    """
 
     def __init__(self,
                  model,
@@ -35,9 +49,28 @@ class LightningModel(pl.LightningModule):
             self.ema = None
 
     def forward(self, data):
+        """
+        Forward pass of the model.
+
+        Args:
+            data: The input data.
+
+        Returns:
+            The output of the model.
+        """
         return self.model(data)
 
     def training_step(self, batch, batch_idx):
+        """
+        Training step for the model.
+
+        Args:
+            batch: The input batch of data.
+            batch_idx: The index of the current batch.
+
+        Returns:
+            The loss value for the training step.
+        """
         data = batch
         x_hat = self.model(data)
         loss = self.loss(torch.squeeze(x_hat), data, "train")
@@ -56,28 +89,98 @@ class LightningModel(pl.LightningModule):
         optimizer,
         optimizer_closure,
     ):
+        """
+        Performs an optimizer step.
+
+        Args:
+            epoch: The current epoch.
+            batch_idx: The index of the current batch.
+            optimizer: The optimizer.
+            optimizer_closure: The closure function for the optimizer.
+
+        """
         optimizer.step(closure=optimizer_closure)
         if self.ema is not None:
             self.ema.update(self.model.parameters())
 
     def validation_step(self, batch, batch_idx):
+        """
+        Validation step for the model.
+
+        Args:
+            batch: The input batch of data.
+            batch_idx: The index of the current batch.
+
+        """
         self._shared_eval(batch, batch_idx, "val")
 
     def test_step(self, batch, batch_idx):
+        """
+        Test step for the model.
+
+        Args:
+            batch: The input batch of data.
+            batch_idx: The index of the current batch.
+
+        """
         self._shared_eval(batch, batch_idx, "test")
 
     def on_save_checkpoint(self, checkpoint):
+        """
+        Callback function called when saving a checkpoint that saves ema state.
+
+        Args:
+            checkpoint: The checkpoint dictionary.
+
+        """
         checkpoint['state_dict'] = self.state_dict()
         if self.ema:
             with self.ema.average_parameters():
                 checkpoint['ema_state_dict'] = deepcopy(self.state_dict())
 
     def on_train_epoch_end(self):
+        """
+        Callback function called at the end of each training epoch.
+
+        """
         if self.scheduler_parameters:  # log learning rate
             lr = self.optimizers().param_groups[0]["lr"]
             self.log("lr", lr)
 
+    def additional_metrics(self, prefix, xhat, data):
+        """
+        Computes additional metrics for evaluation.
+
+        Args:
+            prefix: The prefix used for logging, i.e. "val" or "test".
+            xhat: The predicted output of the model.
+            data: The input data.
+
+        """
+        if self.additional_metric:
+            if isinstance(self.additional_metric, list):
+                metrics = {}
+                for metric in self.additional_metric:
+                    name = metric.__name__
+                    metrics[f"{prefix}_{name}"] = metric(
+                        torch.squeeze(xhat), data, prefix)
+                self.log_dict(metrics)
+            else:
+                metric = self.additional_metric
+                name = metric.__name__
+                self.log_dict({f"{prefix}_{name}": metric(torch.squeeze(
+                    xhat), data, prefix)}, batch_size=_calculate_batch_size(data))
+
     def _shared_eval(self, batch, batch_idx, prefix):
+        """
+        Shared evaluation step for validation and test.
+
+        Args:
+            batch: The input batch of data.
+            batch_idx: The index of the current batch.
+            prefix: The prefix used for logging, i.e. "val" or "test".
+
+        """
         data = batch
         with torch.no_grad():
             if self.ema:
@@ -94,15 +197,7 @@ class LightningModel(pl.LightningModule):
                         on_epoch=True,
                         on_step=False,
                         prog_bar=False)
-                    if self.additional_metric:
-                        metric = self.additional_metric
-                        name = self.additional_metric.__name__
-                        self.log_dict(
-                            {
-                                f"{prefix}_{name}":
-                                metric(torch.squeeze(x_hat), data, prefix)
-                            },
-                            batch_size=_calculate_batch_size(data))
+                    self.additional_metrics(prefix, x_hat, data)
             else:
                 x_hat = self.model(data)
                 loss = self.loss(torch.squeeze(x_hat), data, prefix)
@@ -111,21 +206,19 @@ class LightningModel(pl.LightningModule):
                     f"{prefix}_loss": loss,
                     f"{prefix}_acc": acc
                 },
-                              batch_size=_calculate_batch_size(data))
-                if self.additional_metric:
-                    metric = self.additional_metric
-                    name = self.additional_metric.__name__
-                    self.log_dict(
-                        {
-                            f"{prefix}_{name}":
-                            metric(torch.squeeze(x_hat), data, prefix)
-                        },
-                        batch_size=_calculate_batch_size(data),
-                        on_epoch=True,
-                        on_step=False,
-                        prog_bar=False)
+                    batch_size=_calculate_batch_size(data))
+                self.additional_metrics(prefix, x_hat, data)
 
     def configure_optimizers(self):
+        """
+        Configures the optimizer and learning rate scheduler.
+        Available Schedulers are CosineWithWarmup and ReduceLROnPlateau (defaul).
+        Optimizer is AdamW.
+
+        Returns:
+            The optimizer and learning rate scheduler.
+
+        """
         optimizer = torch.optim.AdamW(self.parameters(),
                                       **self.optimizer_parameters)
         scheduler_parameters = {
@@ -249,13 +342,41 @@ def regression_acc(xhat, data, mode: str):
 
 def average_multilabel_precision(xhat, data, mode: str):
     num_labels = xhat.size(1)
-    metric = MultilabelAveragePrecision(num_labels=num_labels)
+    metric = MultilabelAveragePrecision(num_labels=num_labels).to(xhat.device)
     if hasattr(data, f"{mode}_mask"):
         mask = getattr(data, f"{mode}_mask")
         loss = metric(xhat[mask], torch.squeeze(data.y[mask]).long())
     else:
         loss = metric(xhat, torch.squeeze(data.y).long())
     return loss
+
+
+def regression_precision(xhat, data, mode: str):
+    metric = BinaryPrecision().to(xhat.device)
+    xhat_greater = (xhat >= 0.5).long()
+    y_greater = torch.squeeze((data.y >= 1)).long()
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        loss = metric(xhat_greater[mask], y_greater[mask])
+    else:
+        loss = metric(xhat_greater, y_greater)
+    return loss
+
+
+def regression_recall(xhat, data, mode: str):
+    metric = BinaryRecall().to(xhat.device)
+    xhat_greater = (xhat >= 0.5).long()
+    y_greater = torch.squeeze((data.y >= 1)).long()
+    if hasattr(data, f"{mode}_mask"):
+        mask = getattr(data, f"{mode}_mask")
+        loss = metric(xhat_greater[mask], y_greater[mask])
+    else:
+        loss = metric(xhat_greater, y_greater)
+    return loss
+
+
+def num_true_positives(xhat, data, mode: str):
+    return torch.sum(torch.squeeze(data.y)).item()
 
 
 def get_cosine_schedule_with_warmup(optimizer: Optimizer,
