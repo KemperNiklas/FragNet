@@ -1,4 +1,5 @@
 import warnings
+from copy import deepcopy
 from itertools import chain
 from typing import Union
 
@@ -6,15 +7,14 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import rdkit.Chem as Chem
+import rdkit.Chem.AllChem as AllChem
+import rdkit.DataStructs as DataStructs
 import torch
 from rdkit.Chem.rdchem import Mol
 
-from copy import deepcopy
-import rdkit.Chem.AllChem as AllChem
-import rdkit.DataStructs as DataStructs
+ATOM_LIST = ["C", "N", "O", "F", "P", "S", "Cl", "Br", "I", "B", "Cu", "Zn", 'Co', "Mn", 'As', 'Al', 'Ni', 'Se', 'Si', 'H', 'He', 'Li', 'Be', 'Ne', 'Na', 'Mg', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Fe', 'Ga', 'Ge', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr',
+             'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Uut', 'Fl', 'Uup', 'Lv', 'Uus', 'Uuo']
 
-
-ATOM_LIST = ["C", "N", "O", "F", "P", "S", "Cl", "Br", "I", "B", "Cu", "Zn", 'Co', "Mn", 'As', 'Al', 'Ni', 'Se', 'Si', 'H', 'He', 'Li', 'Be', 'Ne', 'Na', 'Mg', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Fe', 'Ga', 'Ge', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Uut', 'Fl', 'Uup', 'Lv', 'Uus', 'Uuo']
 
 def compute_fingerprint(input: Union[str, Chem.rdchem.Mol]) -> np.array:
     if isinstance(input, str):
@@ -28,6 +28,7 @@ def compute_fingerprint(input: Union[str, Chem.rdchem.Mol]) -> np.array:
     circ_feats = array
     mol_fingerprint = np.concatenate([top_feats, circ_feats])
     return mol_fingerprint
+
 
 def extract_valid_fragment(mol, extract_atom_ids):
     editeable_mol = Chem.RWMol()
@@ -53,7 +54,8 @@ def extract_fragment_from_mol(mol, extract_atom_ids):
         atom_end = bond.GetEndAtom().GetIdx()
         if (atom_begin in extract_atom_ids) ^ (atom_end in extract_atom_ids):
             bonds_to_cut.append(bond.GetIdx())
-    fragmented_molecule = Chem.FragmentOnBonds(mol, bonds_to_cut, addDummies=False)
+    fragmented_molecule = Chem.FragmentOnBonds(
+        mol, bonds_to_cut, addDummies=False)
     frag_idx = []
     frags = Chem.GetMolFrags(
         fragmented_molecule,
@@ -70,7 +72,7 @@ def extract_fragment_from_mol(mol, extract_atom_ids):
         #         result_mol = frag
         #     else:
         #         Chem.CombineMols(result_mol, frag)
-    #return extract_atom_ids, frag
+    # return extract_atom_ids, frag
     warnings.warn("No Matching found")
 
 
@@ -98,11 +100,14 @@ class MolDecomposition:
         self.create_motif_map()
         # check: overlap of motifs can only be 1 node
         for key1 in self.id_to_hash.keys():
-            shape_node_outer = [k for (k, v) in self.nodes.items() if key1 in v]
+            shape_node_outer = [
+                k for (k, v) in self.nodes.items() if key1 in v]
             for key2 in self.id_to_hash.keys():
-                shape_node_inner = [k for (k, v) in self.nodes.items() if key2 in v]
+                shape_node_inner = [
+                    k for (k, v) in self.nodes.items() if key2 in v]
                 if key1 != key2:
-                    assert len(set(shape_node_outer).intersection(set(shape_node_inner))) in [0, 1]
+                    assert len(set(shape_node_outer).intersection(
+                        set(shape_node_inner))) in [0, 1]
         # prepare features for __getitem__ call later, that is, the full decomposition including varying
         # granularities of mapping as well as other expensive featurization functions such as fingerprints
         self.prepare_fingerprints()
@@ -152,12 +157,15 @@ class MolDecomposition:
             atom_end = bond.GetEndAtom().GetIdx()
             if self.nodes[atom_begin] == [-1] or self.nodes[atom_end] == [-1]:
                 continue
-            common_motif = set(self.nodes[atom_begin]).intersection(self.nodes[atom_end])
+            common_motif = set(self.nodes[atom_begin]).intersection(
+                self.nodes[atom_end])
             # assert len(common_motif) <= 1
             if not common_motif:
-                idx_in_mol, _ = extract_fragment_from_mol(self.mol, sorted([atom_begin, atom_end]))
+                idx_in_mol, _ = extract_fragment_from_mol(
+                    self.mol, sorted([atom_begin, atom_end]))
                 current_class = max([max(v) for v in self.nodes.values()]) + 1
-                self.nodes[atom_begin] = self.nodes[atom_begin] + [current_class]
+                self.nodes[atom_begin] = self.nodes[atom_begin] + \
+                    [current_class]
                 self.nodes[atom_end] = self.nodes[atom_end] + [current_class]
 
     def decompose_rings(self, frag_idx):
@@ -174,29 +182,36 @@ class MolDecomposition:
                         if atom.GetDegree() == 4:
                             # check whether it connects two rings
                             ri = fragment.GetRingInfo()
-                            neighbors = [n.GetIdx() for n in atom.GetNeighbors()]
+                            neighbors = [n.GetIdx()
+                                         for n in atom.GetNeighbors()]
                             check_ring_connector = [
-                                [(t, n) for t in neighbors if (ri.AreAtomsInSameRing(t, n) and t != n)]
+                                [(t, n) for t in neighbors if (
+                                    ri.AreAtomsInSameRing(t, n) and t != n)]
                                 for n in neighbors
                             ]
                             # out of all neighbors, we expect exactly two to be in the same ring
                             if all([len(cr) == 1 for cr in check_ring_connector]):
                                 if self.core_mol.GetAtomWithIdx(idx_in_core[atom.GetIdx()]).GetDegree() == 5:
-                                    print("WARNING: junction between two rings has another thing attached")
+                                    print(
+                                        "WARNING: junction between two rings has another thing attached")
                                     continue
                                 # pick any two neighbors and detach from them, add back connector atom later
                                 no_more_detaches_found = False
                                 cut_bonds = [
-                                    fragment.GetBondBetweenAtoms(i, atom.GetIdx()).GetIdx()
+                                    fragment.GetBondBetweenAtoms(
+                                        i, atom.GetIdx()).GetIdx()
                                     for i in check_ring_connector[0][0]
                                 ]
-                                core_mol_frags = Chem.FragmentOnBonds(fragment, cut_bonds, addDummies=False)
-                                new_fragment_idx = Chem.GetMolFrags(core_mol_frags)
+                                core_mol_frags = Chem.FragmentOnBonds(
+                                    fragment, cut_bonds, addDummies=False)
+                                new_fragment_idx = Chem.GetMolFrags(
+                                    core_mol_frags)
                                 frag_idx.remove(idx_in_core)
                                 for nfi in new_fragment_idx:
                                     if not atom.GetIdx() in nfi:
                                         nfi = list(nfi) + [atom.GetIdx()]
-                                    frag_idx.append(tuple([idx_in_core[f] for f in nfi]))
+                                    frag_idx.append(
+                                        tuple([idx_in_core[f] for f in nfi]))
                                 break
             if no_more_detaches_found:
                 break
@@ -204,7 +219,8 @@ class MolDecomposition:
 
     def set_leaf_atoms(self):
         adj = Chem.rdmolops.GetAdjacencyMatrix(self.mol)
-        graph_no_leaf = nx.from_numpy_array(np.triu(adj), create_using=nx.Graph)
+        graph_no_leaf = nx.from_numpy_array(
+            np.triu(adj), create_using=nx.Graph)
         for atom in self.mol.GetAtoms():
             graph_no_leaf.nodes[atom.GetIdx()]["label"] = atom.GetSymbol()
         atom_types, leaf_atoms = [], []
@@ -222,8 +238,10 @@ class MolDecomposition:
                     if neighbour_atom.GetDegree() == 4:
                         # get all neighbors of leaf atom neighbor
                         ri = self.mol.GetRingInfo()
-                        nn = [n.GetIdx() for n in neighbour_atom.GetNeighbors()]
-                        nn = [n for n in nn if not ri.AreAtomsInSameRing(n, neighbour)]
+                        nn = [n.GetIdx()
+                              for n in neighbour_atom.GetNeighbors()]
+                        nn = [n for n in nn if not ri.AreAtomsInSameRing(
+                            n, neighbour)]
                         nn = [n for n in nn if n != idx]
                         # by definition, this ring should have 2 non-ring neighbors
                         # one of them is the leaf we are currently at
@@ -255,7 +273,8 @@ class MolDecomposition:
 
                 fragment_atoms = [a for a in fragment.GetAtoms()]
 
-                junction_atoms = [a.GetIdx() for a in fragment_atoms if is_atom_junction(a)]
+                junction_atoms = [a.GetIdx()
+                                  for a in fragment_atoms if is_atom_junction(a)]
                 # if we have found one, we start the cutting procedure
                 if junction_atoms:
                     # connected junctions should stay intact, so we search from any junction atom
@@ -279,7 +298,8 @@ class MolDecomposition:
                                 for a in fragment_atoms:
                                     if ri.AreAtomsInSameRing(jm, a.GetIdx()):
                                         new_junction_members.append(a.GetIdx())
-                            current_junction = list(set(current_junction + new_junction_members))
+                            current_junction = list(
+                                set(current_junction + new_junction_members))
                             if len(current_junction) == len_before:
                                 break
                             else:
@@ -293,7 +313,8 @@ class MolDecomposition:
                         j_atom = fragment.GetAtomWithIdx(j)
                         if is_atom_junction(j_atom):
                             neighbors = j_atom.GetNeighbors()
-                            junction_neighbors.extend([n.GetIdx() for n in neighbors])
+                            junction_neighbors.extend(
+                                [n.GetIdx() for n in neighbors])
                     junction_members = junction_neighbors + current_junction
 
                     # cut all bonds that go outside of fragment except
@@ -307,13 +328,15 @@ class MolDecomposition:
 
                     if cut_bonds:
                         junction_found = True
-                        core_mol_frags = Chem.FragmentOnBonds(fragment, cut_bonds, addDummies=False)
+                        core_mol_frags = Chem.FragmentOnBonds(
+                            fragment, cut_bonds, addDummies=False)
                         frag_idx = Chem.GetMolFrags(core_mol_frags)
                         # assign idx double to create hypernodes
                         for f_idx in frag_idx:
                             # junction fragment encountered, we just update fragment idx
                             if any([f in junction_members for f in f_idx]):
-                                updated_frag_idx.append(tuple([idx_in_core[f] for f in f_idx]))
+                                updated_frag_idx.append(
+                                    tuple([idx_in_core[f] for f in f_idx]))
                                 continue
                             # for other, cut fragments, we need to determine hypernodes
                             f_idx = set(f_idx)
@@ -326,9 +349,11 @@ class MolDecomposition:
                                 shared_nodes = f_idx.intersection(bond_set)
                                 # add end node of bond as hypernode
                                 if shared_nodes:
-                                    add_ids.append(list(bond_set - shared_nodes)[0])
+                                    add_ids.append(
+                                        list(bond_set - shared_nodes)[0])
                             f_idx = tuple(f_idx.union(set(add_ids)))
-                            updated_frag_idx.append(tuple([idx_in_core[f] for f in f_idx]))
+                            updated_frag_idx.append(
+                                tuple([idx_in_core[f] for f in f_idx]))
                     else:
                         updated_frag_idx.append(idx_in_core)
                 else:
@@ -358,11 +383,13 @@ class MolDecomposition:
                 continue
             ids_of_bonds_to_cut.append(bond.GetIdx())
         if ids_of_bonds_to_cut:
-            core_mol_frags = Chem.FragmentOnBonds(self.core_mol, ids_of_bonds_to_cut, addDummies=False)
+            core_mol_frags = Chem.FragmentOnBonds(
+                self.core_mol, ids_of_bonds_to_cut, addDummies=False)
             frag_idx = Chem.GetMolFrags(core_mol_frags)
             is_ring_junction = []
             for f_idx in frag_idx:
-                atoms_in_frag = [self.core_mol.GetAtomWithIdx(f) for f in f_idx]
+                atoms_in_frag = [
+                    self.core_mol.GetAtomWithIdx(f) for f in f_idx]
                 is_junction = any([is_atom_junction(a) for a in atoms_in_frag])
                 is_ring = any([a.IsInRing() for a in atoms_in_frag])
                 is_ring_junction.append(is_junction and is_ring)
@@ -387,7 +414,8 @@ class MolDecomposition:
                     shared_nodes = f_idx.intersection(bond_set)
                     assert len(shared_nodes) <= 1
                     if shared_nodes:
-                        shared_node_atom = self.core_mol.GetAtomWithIdx(list(shared_nodes)[0])
+                        shared_node_atom = self.core_mol.GetAtomWithIdx(
+                            list(shared_nodes)[0])
                         # junction cycle special case
                         if self.core_mol.GetAtomWithIdx(list(shared_nodes)[0]).IsInRing():
                             if not is_atom_junction(shared_node_atom):
@@ -411,14 +439,16 @@ class MolDecomposition:
             # Attention: since we sanitze, we can not rely on the ordering of the smiles
             Chem.SanitizeMol(frag)
             adjacency = Chem.GetAdjacencyMatrix(frag)
-            graph = nx.from_numpy_array(np.triu(adjacency), create_using=nx.Graph)
+            graph = nx.from_numpy_array(
+                np.triu(adjacency), create_using=nx.Graph)
             graph_hash = nx.weisfeiler_lehman_graph_hash(graph)
             self.id_to_hash[i] = graph_hash
             self.id_to_fragment[i] = Chem.MolToSmiles(frag)
             self.hash_to_id[graph_hash] = i
 
     def create_hypergraph(self):
-        num_classes = len(set([c for c in chain(*list(self.nodes.values())) if c != -1]))
+        num_classes = len(
+            set([c for c in chain(*list(self.nodes.values())) if c != -1]))
         graph = nx.Graph()
         for i in range(num_classes):
             graph.add_node(i)
@@ -448,10 +478,12 @@ class MolDecomposition:
             # when we use these ids to mask, they are already sorted canonically for pos. encoding
             motif = extract_valid_fragment(self.mol, shape_node_idx)
             _ = Chem.MolToSmiles(motif)
-            s_idx = list(motif.GetPropsAsDict(includePrivate=True, includeComputed=True)["_smilesAtomOutputOrder"])
+            s_idx = list(motif.GetPropsAsDict(includePrivate=True,
+                         includeComputed=True)["_smilesAtomOutputOrder"])
             s_idx = np.argsort(s_idx)
             shape_node_idx = np.array(shape_node_idx)[s_idx]
-            node_degrees = np.array([a.GetDegree() for a in motif.GetAtoms()])[s_idx]
+            node_degrees = np.array([a.GetDegree()
+                                    for a in motif.GetAtoms()])[s_idx]
             shape_nodes.append(shape_node_idx.tolist())
             # if it is cyclic all atoms can do joins
             if is_all_cyclic(motif):
@@ -472,18 +504,21 @@ class MolDecomposition:
                         continue
                     allowed_joins[sni] = nd == 1
             gt_motif = self.id_to_fragment[key]
-            gt_motif = Chem.MolToSmiles(Chem.MolFromSmiles(gt_motif), isomericSmiles=False, kekuleSmiles=True)
+            gt_motif = Chem.MolToSmiles(Chem.MolFromSmiles(
+                gt_motif), isomericSmiles=False, kekuleSmiles=True)
             gt_motifs.append(gt_motif)
 
         hgraph = self.create_hypergraph()
         # extract hashes and fill up with -1 in case its not a join, i.e. does not have a secondary shape
-        shape_classes = [[self.id_to_hash[i] for i in (v + [-1])[:2]] for v in self.nodes.values()]
+        shape_classes = [[self.id_to_hash[i]
+                          for i in (v + [-1])[:2]] for v in self.nodes.values()]
         feats_per_motif = [compute_fingerprint(sm) for sm in gt_motifs]
 
         # map hash ids to previously computed features
         def map_hash_to_feat(hashes):
             return [
-                np.full(mfeat_shape, fill_value=-1) if h == -1 else feats_per_motif[self.hash_to_id[h]]
+                np.full(mfeat_shape, fill_value=-1) if h == -
+                1 else feats_per_motif[self.hash_to_id[h]]
                 for h in hashes
             ]
 
@@ -501,7 +536,8 @@ class MolDecomposition:
         )
 
     def get_batch_output(self, hash_to_class_map):
-        hgraph_nodes = [hash_to_class_map[hn] for hn in self.batch_out["hgraph_nodes"] if hn != -1]
+        hgraph_nodes = [hash_to_class_map[hn]
+                        for hn in self.batch_out["hgraph_nodes"] if hn != -1]
         self.batch_out["hgraph_nodes"] = hgraph_nodes
         values, counts = np.unique(np.array(hgraph_nodes), return_counts=True)
         self.batch_out["shape_classes"] = [
@@ -510,7 +546,8 @@ class MolDecomposition:
         self.batch_out["shape_classes"] = [
             [c1, hash_to_class_map[c2]] if c2 != -1 else [c1, c2] for c1, c2 in self.batch_out["shape_classes"]
         ]
-        self.batch_out["shape_classes"] = np.array(self.batch_out["shape_classes"])
+        self.batch_out["shape_classes"] = np.array(
+            self.batch_out["shape_classes"])
         hash_mult = []
         multiplicity_per_class = np.zeros((len(hash_to_class_map.values()),))
         for _, hash in self.id_to_hash.items():

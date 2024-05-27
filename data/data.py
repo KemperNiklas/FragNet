@@ -1,221 +1,24 @@
-import datasets.fragmentations.fragmentations as frag
-from datasets.graph_to_mol import ZINC_Graph_Add_Mol, OGB_Graph_Add_Mol_By_Smiles #I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
-from datasets.plogp import FixPlogP, LogP
+import os.path
 from typing import Dict, List, Optional, Tuple
-from torch_geometric.datasets import TUDataset, Planetoid, ZINC
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
-from torch_geometric.utils import degree
-from torch_geometric.transforms import OneHotDegree, BaseTransform, Compose, add_positional_encoding
-from datasets.lrgb import lrgb
-from datasets.count_substructures import CountSubstructures
+
+import torch
 from ogb.graphproppred import PygGraphPropPredDataset
 from torch.nn.functional import one_hot
 from torch.utils.data import random_split
-import torch
-import os.path
+from torch_geometric.data import Data
+from torch_geometric.datasets import ZINC
+from torch_geometric.loader import DataLoader
+from torch_geometric.transforms import (BaseTransform, Compose, OneHotDegree,
+                                        add_positional_encoding)
+from torch_geometric.utils import degree
 
-TU_DATASETS = [
-    "MUTAG", "ENZYMES", "PROTEINS", "COLLAB", "IMDB-BINARY", "REDDIT-BINARY"
-]
-PLANETOID_DATASETS = ["Cora", "CiteSeer", "PubMed"]
-
-VOCAB_ROOT = "/ceph/hdd/students/kempern/datasets"
-DATASET_ROOT = "/ceph/hdd/students/kempern/datasets"
-
-
-def load(dataset: str,
-         motifs: Dict[str, List[int]] = {},
-         target: List = [],
-         remove_node_features: bool = False,
-         one_hot_degree: bool = False,
-         substructure_node_feature: List = [],
-         loader_params: Optional[Dict] = None):
-    """Load dataset and compute additional substructure edge index
-
-    Parameters
-    ----------
-    dataset
-        Name of the dataset
-    motifs
-        Dictinonary containing the names and the sizes of the motifs for which the substructure edge index is computed.
-        Available motifs are `ring` and `clique`.
-    target, optional
-        Replace target by count of a motif with given size (either node_level or not). target = (motif, size, node_level).
-    remove_node_features, optional
-        Boolean indicating whether node_labels should be removed, by default False
-    one_hot_degree, optional
-        Boolean indicating whether to concatinate the node features with a one hot encoded node degree, by default False.
-    loader_params, optional
-        Dictionary containing train_fraction, val_fraction and batch_size, not needed for Planetoid datasets, by default None.
-
-    Returns
-    -------
-    The (possibly transformed) dataset, the number of featrues, the number of classes, the number of substructures
-    """
-    import datasets.substructures as sub
-    one_hot_classes: Optional[int] = None
-
-    def pre_transform(graph):
-        substructures = []
-        if "clique" in motifs:
-            substructures += [
-                sub.get_cliques(graph.edge_index, max_k=i, min_k=i)
-                for i in motifs["clique"]
-            ]
-        if "ring" in motifs:
-            substructures += [
-                sub.get_rings(graph.edge_index, max_k=i, min_k=i)
-                for i in motifs["ring"]
-            ]
-        substructures_edge_index = [
-            sub.get_substructure_edge_index(substructure)
-            for substructure in substructures
-        ]
-
-        #graph.substructures_edge_index = substructures_edge_index
-        update = {"substructures_edge_index": substructures_edge_index}
-
-        if target:
-            shape, size, node_level = target
-            if shape == "clique":
-                y = sub.get_node_counts(
-                    sub.get_cliques(graph.edge_index, max_k=size, min_k=size),
-                    graph.num_nodes)
-            elif shape == "ring":
-                y = sub.get_node_counts(
-                    sub.get_rings(graph.edge_index, max_k=size, min_k=size),
-                    graph.num_nodes)
-            elif shape == "triangle+square":  # a bit hacky...
-                triangle = sub.get_rings(graph.edge_index, max_k=3, min_k=3)
-                square = sub.get_rings(graph.edge_index, max_k=4, min_k=4)
-                y = sub.get_node_counts(triangle,
-                                        graph.num_nodes) + sub.get_node_counts(
-                                            square, graph.num_nodes)
-            else:
-                raise RuntimeError(f"Shape {shape} not supported")
-
-            if not node_level:
-                y = y.sum()
-            #graph.y = y
-            update["y"] = y
-
-        if remove_node_features:
-            graph.x = torch.zeros((graph.num_nodes, 1))
-            #update["x"] = torch.zeros((graph.num_nodes,1))
-
-        if one_hot_classes:
-            graph.x = one_hot(graph.x,
-                              num_classes=one_hot_classes).float().squeeze(1)
-
-        if substructure_node_feature:
-            shape, size = substructure_node_feature
-            if shape == "clique":
-                counts = sub.get_node_counts(
-                    sub.get_cliques(graph.edge_index, max_k=size, min_k=size),
-                    graph.num_nodes)
-            elif shape == "ring":
-                counts = sub.get_node_counts(
-                    sub.get_rings(graph.edge_index, max_k=size, min_k=size),
-                    graph.num_nodes)
-            else:
-                raise RuntimeError(f"Shape {shape} not supported")
-            if graph.x.dim == 1:
-                graph.x = torch.unsqueeze(graph.x, 1)
-            graph.x = torch.cat((graph.x, torch.unsqueeze(counts, 1)), dim=1)
-
-        graph.update(update)
-        #return graph.update(update)
-        return graph
-
-    if dataset in TU_DATASETS:
-        #data = TUDataset(root=f'/tmp/{dataset}_{motifs}_{target}_{remove_node_features}', name= dataset, pre_transform = pre_transform, use_node_attr= True)
-        # compute hash to uniquely identify each preprocessing variant
-        data = TUDataset(
-            root=
-            f'/tmp/{dataset}_{hash((tuple((key, size) for key, sizes in motifs.items() for size in sizes), tuple(target), remove_node_features, tuple(substructure_node_feature)))}',
-            name=dataset,
-            pre_transform=pre_transform,
-            use_node_attr=True)
-        data = data.shuffle()
-
-        if one_hot_degree:
-            data = OneHotDegree(max_degree=_get_max_degree(data))(data)
-
-        train_num = int(len(data) * loader_params["train_fraction"])
-        val_num = int(len(data) * loader_params["val_fraction"])
-        train_dataset = data[:train_num]
-        val_dataset = data[train_num:train_num + val_num]
-        test_dataset = data[train_num + val_num:]
-        train_loader = DataLoader(train_dataset,
-                                  batch_size=loader_params["batch_size"],
-                                  num_workers=loader_params["num_workers"],
-                                  shuffle=True)
-        val_loader = DataLoader(val_dataset,
-                                batch_size=loader_params["batch_size"],
-                                num_workers=loader_params["num_workers"])
-        test_loader = DataLoader(test_dataset,
-                                 batch_size=loader_params["batch_size"],
-                                 num_workers=loader_params["num_workers"])
-
-    elif dataset in PLANETOID_DATASETS:
-        data = Planetoid(
-            root=f'/tmp/{dataset}_{motifs}_{target}_{remove_node_features}',
-            name=dataset,
-            pre_transform=pre_transform)
-
-        if one_hot_degree:
-            data = OneHotDegree(max_degree=_get_max_degree(data))(data)
-
-        # transductive setting
-        train_loader = DataLoader(data, batch_size=1)
-        val_loader = DataLoader(data, batch_size=1)
-        test_loader = DataLoader(data, batch_size=1)
-
-    elif dataset == "ZINC" or dataset == "ZINC-full":
-        one_hot_classes = 30
-
-        if dataset == "ZINC-full":
-            subset = False
-        else:
-            subset = True
-
-        config_hash = hash((tuple((key, size) for key, sizes in motifs.items()
-                                  for size in sizes), tuple(target),
-                            tuple(substructure_node_feature))) + 1
-
-        train_data = ZINC(root=f'/tmp/{dataset}_{config_hash}',
-                          pre_transform=pre_transform,
-                          subset=subset,
-                          split="train")
-        val_data = ZINC(root=f'/tmp/{dataset}_{config_hash}',
-                        pre_transform=pre_transform,
-                        subset=subset,
-                        split="val")
-        test_data = ZINC(root=f'/tmp/{dataset}_{config_hash}',
-                         pre_transform=pre_transform,
-                         subset=subset,
-                         split="test")
-        data = train_data
-        data.num_classes = 1
-
-        train_loader = DataLoader(train_data,
-                                  batch_size=loader_params["batch_size"],
-                                  num_workers=loader_params["num_workers"])
-        val_loader = DataLoader(val_data,
-                                batch_size=loader_params["batch_size"],
-                                num_workers=loader_params["num_workers"])
-        test_loader = DataLoader(test_data,
-                                 batch_size=loader_params["batch_size"],
-                                 num_workers=loader_params["num_workers"])
-
-    else:
-        raise RuntimeError(f"Dataset {dataset} is not supported")
-
-    num_features = data.num_features
-    num_classes = data.num_classes
-    num_substructures = len(data[0].substructures_edge_index)
-    return train_loader, val_loader, test_loader, num_features, num_classes, num_substructures
+import data.fragmentations.fragmentations as frag
+from config import DATASET_ROOT, VOCAB_ROOT
+from data.count_substructures import CountSubstructures
+from data.graph_to_mol import (  # I have no idea why but this import has to be in the beginning (I know that this is probably a bad sign...)
+    OGB_Graph_Add_Mol_By_Smiles, ZINC_Graph_Add_Mol)
+from data.lrgb import lrgb
+from data.plogp import FixPlogP, LogP
 
 
 def load_fragmentation(dataset,
@@ -230,14 +33,33 @@ def load_fragmentation(dataset,
                        higher_edge_features=False,
                        dataset_seed=None,
                        **kwargs):
+    """
+    Loads the data and computes the fragmentation for a given dataset.
+
+    Args:
+        dataset (str): The name of the dataset.
+        remove_node_features (bool): Whether to remove node features.
+        one_hot_degree (bool): Whether to one-hot encode the node degrees.
+        one_hot_node_features (bool): Whether to one-hot encode the node features.
+        one_hot_edge_features (bool): Whether to one-hot encode the edge features.
+        fragmentation_method (tuple): A tuple containing the fragmentation method, usage, and vocabulary size parameters.
+        loader_params (dict): A dictionary containing the loader parameters.
+        encoding (list, optional): A list of dictionaries for additional encodings (currently only supports random walk encoding). Defaults to None.
+        subset_frac (float, optional): The fraction of the dataset to use for training. Defaults to 1 (full training dataset).
+        higher_edge_features (bool, optional): Whether to use higher-level edge features (edge features on the higher-level graph). Defaults to False.
+        dataset_seed (int, optional): The seed for the dataset. Defaults to None.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        DataLoader: The DataLoader object containing the loaded data including the fragmentation.
+    """
 
     if fragmentation_method:
         frag_type, frag_usage, vocab_size_params = fragmentation_method
 
         if frag_usage == "higher_level_graph_tree":
             # later on, tree construction introduces an additional junction fragment
-            vocab_size_params = vocab_size_params.copy(
-            )  # allows us to change contents
+            vocab_size_params = vocab_size_params.copy()  # allows us to change contents
             vocab_size_params["vocab_size"] -= 1
 
         vocab = get_vocab(dataset, frag_type, vocab_size_params["vocab_size"])
@@ -269,7 +91,7 @@ def load_fragmentation(dataset,
                                   higher_edge_features=higher_edge_features)
         }
 
-    #create fragmentation
+    # create fragmentation
     transformations = []
 
     if remove_node_features:
@@ -328,41 +150,51 @@ def load_fragmentation(dataset,
             split="test")
         data = train_data
         num_classes = 1
-    
-    elif dataset == "ZINC-fixed" or dataset == "ZINC-full-fixed":   
+
+    elif dataset == "ZINC-fixed" or dataset == "ZINC-full-fixed":
         transformations.insert(0, ZINC_Graph_Add_Mol())
         transformations.append(FixPlogP())
         transform = Compose(transformations)
         subset = True if dataset == "ZINC-fixed" else False
-        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
-        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
-        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                          pre_transform=transform, subset=subset, split="train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                        pre_transform=transform, subset=subset, split="val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                         pre_transform=transform, subset=subset, split="test")
         data = train_data
         num_classes = 1
-    
-    elif dataset == "ZINC-logP" or dataset == "ZINC-full-logP":   
+
+    elif dataset == "ZINC-logP" or dataset == "ZINC-full-logP":
         transformations.insert(0, ZINC_Graph_Add_Mol())
         transformations.append(LogP())
         transform = Compose(transformations)
         subset = True if dataset == "ZINC-logP" else False
-        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "train")
-        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "val")
-        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}', pre_transform = transform, subset = subset, split = "test")
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                          pre_transform=transform, subset=subset, split="train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                        pre_transform=transform, subset=subset, split="val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}',
+                         pre_transform=transform, subset=subset, split="test")
         data = train_data
         num_classes = 1
-    
+
     elif dataset == "ZINC-count":
         transformations.insert(0, ZINC_Graph_Add_Mol())
         substructure_idx = kwargs["substructure_idx"] if "substructure_idx" in kwargs else None
-        transformations.insert(1, CountSubstructures(substructure_idx = substructure_idx))
+        transformations.insert(1, CountSubstructures(
+            substructure_idx=substructure_idx))
         transform = Compose(transformations)
         subset = True
-        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "train")
-        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "val")
-        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}', pre_transform = transform, subset = subset, split = "test")
+        train_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}',
+                          pre_transform=transform, subset=subset, split="train")
+        val_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}',
+                        pre_transform=transform, subset=subset, split="val")
+        test_data = ZINC(root=f'{DATASET_ROOT}/{dataset}/{dataset}_{config_name}_{substructure_idx}',
+                         pre_transform=transform, subset=subset, split="test")
         data = train_data
         num_classes = 15 if substructure_idx is None else 1
-    
+
     elif dataset == "ogbg-molhiv":
         transformations.insert(0, OGB_Graph_Add_Mol_By_Smiles())
         transform = Compose(transformations)
@@ -453,32 +285,38 @@ def get_vocab(dataset: str,
               frag_type: str,
               max_vocab=100,
               root: str = VOCAB_ROOT):
+    """
+    Get the vocabulary for a given dataset and fragmentation type.
+
+    Args:
+        dataset (str): The name of the dataset.
+        frag_type (str): The type of fragmentation.
+        max_vocab (int, optional): The maximum size of the vocabulary. Defaults to 100.
+        root (str, optional): The root directory for storing the vocabulary. Defaults to VOCAB_ROOT.
+
+    Returns:
+        vocab: The vocabulary for the given dataset and fragmentation type, if the fragmentation scheme requires no vocabulary 
+        (e.g. RingsPaths fragmentation) None is returned.
+    """
+
     vocab_constructions = {
-        "BBB":
-        frag.BreakingBridgeBondsVocab(vocab_size=max_vocab),
-        "PSM":
-        frag.PrincipalSubgraphVocab(
+        "BBB": frag.BreakingBridgeBondsVocab(vocab_size=max_vocab),
+        "PSM": frag.PrincipalSubgraphVocab(
             vocab_size=max_vocab,
             vocab_path=f'/tmp/{dataset}_PSM_vocab_{max_vocab}.txt'),
-        "BRICS":
-        frag.BRICSVocab(vocab_size=max_vocab),
-        "Magnet":
-        frag.MagnetVocab(vocab_size=max_vocab),
-        "Rings":
-        None,
-        "RingsEdges":
-        None,
-        "RingsPaths":
-        None,
-        "MagnetWithoutVocab":
-        None
+        "BRICS": frag.BRICSVocab(vocab_size=max_vocab),
+        "Magnet": frag.MagnetVocab(vocab_size=max_vocab),
+        "Rings": None,
+        "RingsEdges": None,
+        "RingsPaths": None,
+        "MagnetWithoutVocab": None
     }
 
     if frag_type not in vocab_constructions:
         raise RuntimeError("Fragmentation type is not supported")
 
     if vocab_constructions[frag_type]:
-        #check if vocab already exists
+        # check if vocab already exists
         vocab_file_name = f"{root}/{dataset}/{dataset}_{frag_type}_vocab_{max_vocab}"
         if os.path.isfile(vocab_file_name):
             vocab = frag.get_vocab_from_file(vocab_file_name)
@@ -516,7 +354,7 @@ def get_vocab(dataset: str,
             for data in vocab_data:
                 vocab_generator(data)
             vocab = vocab_generator.get_vocab()
-            frag.vocab_to_file(vocab_generator, vocab_file_name)
+            frag.vocab_to_file(vocab_generator, vocab_file_name)  # save vocab
 
         return vocab
     return None

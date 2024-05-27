@@ -1,13 +1,12 @@
 """Adapted from https://github.com/TUM-DAML/synthetic_coordinates/"""
+from rdkit.Chem import AllChem as Chem
+import pandas as pd
 import torch
-
-from torch_geometric.transforms import BaseTransform
-#from rdkit.Chem import AllChem as Chem
+# from rdkit.Chem import AllChem as Chem
 from rdkit import Chem
 from rdkit.Chem.rdmolops import FastFindRings
+from torch_geometric.transforms import BaseTransform
 from torch_scatter import scatter
-
-import pandas as pd
 
 # simple atoms without charge
 # map ndx to atomic number
@@ -51,6 +50,7 @@ NODE_MAPPING3 = {
     26: (6, 1, -1),  # CH1-
     27: (15, 1, 1),  # PH1+
 }
+
 
 def zinc_bond_ndx_to_bond(ndx):
     mapping = {
@@ -143,14 +143,11 @@ class ZINC_Graph_Add_Mol(BaseTransform):
         # cleanup the molecule
         Chem.SanitizeMol(mol)
         mol.UpdatePropertyCache()
-        #FastFindRings(mol)
+        # FastFindRings(mol)
 
-        #smi = Chem.MolToSmiles(mol)
+        # smi = Chem.MolToSmiles(mol)
         graph.mol = mol
         return graph
-
-from rdkit.Chem import AllChem as Chem
-from rdkit.Chem.rdmolops import FastFindRings
 
 
 def get_chiral_tag(ndx):
@@ -227,21 +224,23 @@ def extract_node_feature(data, reduce="add"):
         raise Exception("Unknown Aggregation Type")
     return data
 
+
 class OGB_Graph_Add_Mol_By_Smiles:
     """
     Add rdkit mol object to OGB hiv graph
     """
-    def __init__(self, filename = 'datasets/data/ogbg_molhiv/mapping/mol.csv.gz'):
+
+    def __init__(self, filename='datasets/data/ogbg_molhiv/mapping/mol.csv.gz'):
         self.matching = pd.read_csv(filename)
         self.idx = 0
-    
+
     def __call__(self, graph):
         mol = Chem.MolFromSmiles(self.matching.smiles[self.idx])
         self.idx += 1
         graph.mol = mol
         return graph
-    
-    
+
+
 class OGB_Graph_Add_Mol:
     """
     Add rdkit mol object to OGB graph (hiv or pcba)
@@ -281,8 +280,8 @@ class OGB_Graph_Add_Mol:
         # cleanup the molecule
         mol.UpdatePropertyCache()
         Chem.SanitizeMol(mol)
-        
-        #FastFindRings(mol)
+
+        # FastFindRings(mol)
         graph.mol = mol
 
         return graph

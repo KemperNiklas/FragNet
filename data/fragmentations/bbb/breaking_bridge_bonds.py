@@ -1,9 +1,8 @@
 import logging
 from collections import Counter
-from typing import Dict, List, NamedTuple, Tuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from rdkit import Chem
-
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +89,13 @@ def fragment_into_candidate_motifs(
     Chem.rdmolops.Kekulize(molecule, clearAromaticFlags=True)
 
     # Collect identifiers of bridge bonds that will be broken.
-    ids_of_bonds_to_cut = get_bonds_to_fragment_on(molecule, cut_leaf_edges=cut_leaf_edges)
+    ids_of_bonds_to_cut = get_bonds_to_fragment_on(
+        molecule, cut_leaf_edges=cut_leaf_edges)
 
     if ids_of_bonds_to_cut:
         # Remove the selected bonds from the molecule.
-        fragmented_molecule = Chem.FragmentOnBonds(molecule, ids_of_bonds_to_cut, addDummies=False)
+        fragmented_molecule = Chem.FragmentOnBonds(
+            molecule, ids_of_bonds_to_cut, addDummies=False)
     else:
         fragmented_molecule = molecule
 
@@ -122,7 +123,8 @@ def fragment_into_candidate_motifs(
 
         # ...and renumber into [0, 1, ...] for convenience.
         symmetry_classes_present = sorted(list(set(atom_symmetry_classes)))
-        atom_symmetry_classes = map(symmetry_classes_present.index, atom_symmetry_classes)
+        atom_symmetry_classes = map(
+            symmetry_classes_present.index, atom_symmetry_classes)
 
         annotations = [
             MotifAtomAnnotation(atom_id, symmetry_class_id)
@@ -153,7 +155,8 @@ class MotifVocabularyExtractor:
         motif_list = list(self._motif_counts.items())
 
         # Sort decreasing by number of occurences, break ties by SMILES string for determinism.
-        motif_list = sorted(motif_list, key=lambda element: (element[1], element[0]), reverse=True)
+        motif_list = sorted(motif_list, key=lambda element: (
+            element[1], element[0]), reverse=True)
 
         logger.info(f"Motifs in total: {len(motif_list)}")
 
@@ -165,7 +168,8 @@ class MotifVocabularyExtractor:
                 if frequency >= self._settings.min_frequency
             ]
 
-            logger.info(f"Removed motifs occurring less than {self._settings.min_frequency} times")
+            logger.info(
+                f"Removed motifs occurring less than {self._settings.min_frequency} times")
             logger.info(f"Motifs remaining: {len(motif_list)}")
 
         motif_list = [
@@ -179,7 +183,8 @@ class MotifVocabularyExtractor:
             if num_atoms >= self._settings.min_num_atoms
         ]
 
-        logger.info(f"Removing motifs with less than {self._settings.min_num_atoms} atoms")
+        logger.info(
+            f"Removing motifs with less than {self._settings.min_num_atoms} atoms")
         logger.info(f"Motifs remaining: {len(motif_list)}")
 
         # Truncate to maximum vocab size if supplied.
@@ -234,7 +239,8 @@ def find_motifs_from_vocabulary(
         smiles = Chem.MolToSmiles(motif)
 
         if smiles in motif_vocabulary.vocabulary:
-            motifs_found.append(MotifAnnotation(motif_type=smiles, atoms=atom_annotations))
+            motifs_found.append(MotifAnnotation(
+                motif_type=smiles, atoms=atom_annotations))
 
     return motifs_found
 

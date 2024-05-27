@@ -1,15 +1,17 @@
-from rdkit import Chem
-import networkx as nx
-from torch_geometric.transforms import BaseTransform
-from rdkit.Chem import Descriptors
-from rdkit import Chem
-from rdkit.Chem import RDConfig
+import sascorer
 import os
 import sys
+
+import networkx as nx
+from rdkit import Chem
+from rdkit.Chem import Descriptors, RDConfig
+from torch_geometric.transforms import BaseTransform
+
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 # now you can import sascore!
-import sascorer
-#from rdkit.Contrib.SA_Score import sascorer
+
+# from rdkit.Contrib.SA_Score import sascorer
+
 
 def penalized_logp(mol):
     """
@@ -33,7 +35,7 @@ def penalized_logp(mol):
     # cycle score
     cycle_list = nx.cycle_basis(nx.Graph(
         Chem.rdmolops.GetAdjacencyMatrix(mol)))
-    #print(cycle_list)
+    # print(cycle_list)
     if len(cycle_list) == 0:
         cycle_length = 0
     else:
@@ -47,7 +49,7 @@ def penalized_logp(mol):
     normalized_log_p = (log_p - logP_mean) / logP_std
     normalized_SA = (SA - SA_mean) / SA_std
     normalized_cycle = (cycle_score - cycle_mean) / cycle_std
-    
+
     y = normalized_log_p + normalized_SA + normalized_cycle
 
     return normalized_log_p, normalized_SA, normalized_cycle, y
@@ -87,10 +89,11 @@ def penalized_logp_fix(mol):
     normalized_log_p = (log_p - logP_mean) / logP_std
     normalized_SA = (SA - SA_mean) / SA_std
     normalized_cycle = (cycle_score - cycle_mean) / cycle_std
-    
+
     y = normalized_log_p + normalized_SA + normalized_cycle
 
     return normalized_log_p, normalized_SA, normalized_cycle, y
+
 
 def logp(mol):
     # normalization constants, statistics from 250k_rndm_zinc_drugs_clean.smi
@@ -104,11 +107,12 @@ def logp(mol):
 
     normalized_log_p = (log_p - logP_mean) / logP_std
     normalized_SA = (SA - SA_mean) / SA_std
-    #normalized_cycle = (cycle_score - cycle_mean) / cycle_std
-    
-    y = normalized_log_p + normalized_SA 
+    # normalized_cycle = (cycle_score - cycle_mean) / cycle_std
+
+    y = normalized_log_p + normalized_SA
 
     return normalized_log_p, normalized_SA, y
+
 
 class FixPlogP(BaseTransform):
     def __init__(self):
@@ -117,7 +121,8 @@ class FixPlogP(BaseTransform):
     def __call__(self, data):
         data.y = penalized_logp_fix(data.mol)[3]
         return data
-    
+
+
 class LogP(BaseTransform):
     def __init__(self):
         super(LogP, self).__init__()
