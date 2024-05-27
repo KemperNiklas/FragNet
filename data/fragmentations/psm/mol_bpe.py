@@ -1,30 +1,33 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
-import json
-from copy import copy
 import argparse
+import json
 import multiprocessing as mp
+from copy import copy
+
 from tqdm import tqdm
 
-from datasets.fragmentations.utils.chem_utils import smi2mol, mol2smi, get_submol
-from datasets.fragmentations.utils.chem_utils import cnt_atom, MAX_VALENCE
-from datasets.fragmentations.utils.logger import print_log
-from datasets.fragmentations.molecule import Molecule
-
+from data.fragmentations.psm.molecule import Molecule
+from data.fragmentations.psm.utils.chem_utils import (MAX_VALENCE, cnt_atom,
+                                                      get_submol, mol2smi,
+                                                      smi2mol)
+from data.fragmentations.psm.utils.logger import print_log
 
 '''classes below are used for principal subgraph extraction'''
+
 
 class MolInSubgraph:
     def __init__(self, mol, kekulize=False):
         self.mol = mol
         self.smi = mol2smi(mol)
         self.kekulize = kekulize
-        self.subgraphs, self.subgraphs_smis = {}, {}  # pid is the key (init by all atom idx)
+        # pid is the key (init by all atom idx)
+        self.subgraphs, self.subgraphs_smis = {}, {}
         for atom in mol.GetAtoms():
             idx, symbol = atom.GetIdx(), atom.GetSymbol()
-            self.subgraphs[idx] = { idx: symbol }
+            self.subgraphs[idx] = {idx: symbol}
             self.subgraphs_smis[idx] = symbol
-        self.inversed_index = {} # assign atom idx to pid
+        self.inversed_index = {}  # assign atom idx to pid
         self.upid_cnt = len(self.subgraphs)
         for aid in range(mol.GetNumAtoms()):
             for key in self.subgraphs:
@@ -32,7 +35,7 @@ class MolInSubgraph:
                 if aid in subgraph:
                     self.inversed_index[aid] = key
         self.dirty = True
-        self.smi2pids = {} # private variable, record neighboring graphs and their pids
+        self.smi2pids = {}  # private variable, record neighboring graphs and their pids
 
     def get_nei_subgraphs(self):
         nei_subgraphs, merge_pids = [], []
@@ -53,13 +56,14 @@ class MolInSubgraph:
                 nei_subgraphs.append(new_subgraph)
                 merge_pids.append((key, nei_pid))
         return nei_subgraphs, merge_pids
-    
+
     def get_nei_smis(self):
         if self.dirty:
             nei_subgraphs, merge_pids = self.get_nei_subgraphs()
             nei_smis, self.smi2pids = [], {}
             for i, subgraph in enumerate(nei_subgraphs):
-                submol = get_submol(self.mol, list(subgraph.keys()), kekulize=self.kekulize)
+                submol = get_submol(self.mol, list(
+                    subgraph.keys()), kekulize=self.kekulize)
                 smi = mol2smi(submol)
                 nei_smis.append(smi)
                 self.smi2pids.setdefault(smi, [])
@@ -75,7 +79,7 @@ class MolInSubgraph:
         if smi in self.smi2pids:
             merge_pids = self.smi2pids[smi]
             for pid1, pid2 in merge_pids:
-                if pid1 in self.subgraphs and pid2 in self.subgraphs: # possibly del by former
+                if pid1 in self.subgraphs and pid2 in self.subgraphs:  # possibly del by former
                     self.subgraphs[pid1].update(self.subgraphs[pid2])
                     self.subgraphs[self.upid_cnt] = self.subgraphs[pid1]
                     self.subgraphs_smis[self.upid_cnt] = smi
@@ -110,6 +114,7 @@ def freq_cnt(mol):
         freqs[smi] += 1
     return freqs, mol
 
+
 def graph_bpe_smiles(smis, vocab_len, vocab_path, cpus, kekulize):
     # init to atoms
     mols = []
@@ -120,7 +125,8 @@ def graph_bpe_smiles(smis, vocab_len, vocab_path, cpus, kekulize):
         except Exception as e:
             print_log(f'Parsing {smi} failed. Skip.', level='ERROR')
     # loop
-    selected_smis, details = list(MAX_VALENCE.keys()), {}   # details: <smi: [atom cnt, frequency]
+    # details: <smi: [atom cnt, frequency]
+    selected_smis, details = list(MAX_VALENCE.keys()), {}
     # calculate single atom frequency
     for atom in selected_smis:
         details[atom] = [1, 0]  # frequency of single atom is not calculated
@@ -131,11 +137,13 @@ def graph_bpe_smiles(smis, vocab_len, vocab_path, cpus, kekulize):
                 details[atom][1] += cnts[atom]
     # bpe process
     add_len = vocab_len - len(selected_smis)
-    print_log(f'Added {len(selected_smis)} atoms, {add_len} principal subgraphs to extract')
+    print_log(
+        f'Added {len(selected_smis)} atoms, {add_len} principal subgraphs to extract')
     pbar = tqdm(total=add_len)
     pool = mp.Pool(cpus)
     while len(selected_smis) < vocab_len:
-        res_list = pool.map(freq_cnt, mols)  # each element is (freq, mol) (because mol will not be synced...)
+        # each element is (freq, mol) (because mol will not be synced...)
+        res_list = pool.map(freq_cnt, mols)
         freqs, mols = {}, []
         for freq, mol in res_list:
             mols.append(mol)
@@ -163,8 +171,10 @@ def graph_bpe_smiles(smis, vocab_len, vocab_path, cpus, kekulize):
     pool.close()
     with open(vocab_path, 'w') as fout:
         fout.write(json.dumps({'kekulize': kekulize}) + '\n')
-        fout.writelines(list(map(lambda smi: f'{smi}\t{details[smi][0]}\t{details[smi][1]}\n', selected_smis)))
+        fout.writelines(list(
+            map(lambda smi: f'{smi}\t{details[smi][0]}\t{details[smi][1]}\n', selected_smis)))
     return selected_smis, details
+
 
 def graph_bpe(fname, vocab_len, vocab_path, cpus, kekulize):
     # load molecules
@@ -180,7 +190,8 @@ def graph_bpe(fname, vocab_len, vocab_path, cpus, kekulize):
         except Exception as e:
             print_log(f'Parsing {smi} failed. Skip.', level='ERROR')
     # loop
-    selected_smis, details = list(MAX_VALENCE.keys()), {}   # details: <smi: [atom cnt, frequency]
+    # details: <smi: [atom cnt, frequency]
+    selected_smis, details = list(MAX_VALENCE.keys()), {}
     # calculate single atom frequency
     for atom in selected_smis:
         details[atom] = [1, 0]  # frequency of single atom is not calculated
@@ -191,11 +202,13 @@ def graph_bpe(fname, vocab_len, vocab_path, cpus, kekulize):
                 details[atom][1] += cnts[atom]
     # bpe process
     add_len = vocab_len - len(selected_smis)
-    print_log(f'Added {len(selected_smis)} atoms, {add_len} principal subgraphs to extract')
+    print_log(
+        f'Added {len(selected_smis)} atoms, {add_len} principal subgraphs to extract')
     pbar = tqdm(total=add_len)
     pool = mp.Pool(cpus)
     while len(selected_smis) < vocab_len:
-        res_list = pool.map(freq_cnt, mols)  # each element is (freq, mol) (because mol will not be synced...)
+        # each element is (freq, mol) (because mol will not be synced...)
+        res_list = pool.map(freq_cnt, mols)
         freqs, mols = {}, []
         for freq, mol in res_list:
             mols.append(mol)
@@ -223,7 +236,8 @@ def graph_bpe(fname, vocab_len, vocab_path, cpus, kekulize):
     pool.close()
     with open(vocab_path, 'w') as fout:
         fout.write(json.dumps({'kekulize': kekulize}) + '\n')
-        fout.writelines(list(map(lambda smi: f'{smi}\t{details[smi][0]}\t{details[smi][1]}\n', selected_smis)))
+        fout.writelines(list(
+            map(lambda smi: f'{smi}\t{details[smi][0]}\t{details[smi][1]}\n', selected_smis)))
     return selected_smis, details
 
 
@@ -235,7 +249,7 @@ class Tokenizer:
         config = json.loads(lines[0])
         self.kekulize = config['kekulize']
         lines = lines[1:]
-        
+
         self.vocab_dict = {}
         self.idx2subgraph, self.subgraph2idx = [], {}
         self.max_num_nodes = 0
@@ -251,8 +265,8 @@ class Tokenizer:
             self.idx2subgraph.append(smi)
         # for fine-grained level (atom level)
         self.bond_start = '<bstart>'
-        self.max_num_nodes += 2 # start, padding
-    
+        self.max_num_nodes += 2  # start, padding
+
     def tokenize(self, mol):
         # smiles = mol
         # if isinstance(mol, str):
@@ -294,43 +308,50 @@ class Tokenizer:
 
     def idx_to_subgraph(self, idx):
         return self.idx2subgraph[idx]
-    
+
     def subgraph_to_idx(self, subgraph):
         return self.subgraph2idx[subgraph]
-    
+
     def pad_idx(self):
         return self.subgraph2idx[self.pad]
-    
+
     def end_idx(self):
         return self.subgraph2idx[self.end]
-    
+
     def atom_vocab(self):
         return copy(self.atom_level_vocab)
 
     def num_subgraph_type(self):
         return len(self.idx2subgraph)
-    
+
     def atom_pos_pad_idx(self):
         return self.max_num_nodes - 1
-    
+
     def atom_pos_start_idx(self):
         return self.max_num_nodes - 2
 
     def __call__(self, mol):
         return self.tokenize(mol)
-    
+
     def __len__(self):
         return len(self.idx2subgraph)
 
+
 def parse():
-    parser = argparse.ArgumentParser(description='Principal subgraph extraction motivated by bpe')
+    parser = argparse.ArgumentParser(
+        description='Principal subgraph extraction motivated by bpe')
     parser.add_argument('--smiles', type=str, default='COc1cc(C=NNC(=O)c2ccc(O)cc2O)ccc1OCc1ccc(Cl)cc1',
                         help='The molecule to tokenize (example)')
-    parser.add_argument('--data', type=str, required=True, help='Path to molecule corpus')
-    parser.add_argument('--vocab_size', type=int, default=500, help='Length of vocab')
-    parser.add_argument('--output', type=str, required=True, help='Path to save vocab')
-    parser.add_argument('--workers', type=int, default=16, help='Number of cpus to use')
-    parser.add_argument('--kekulize', action='store_true', help='Whether to kekulize the molecules (i.e. replace aromatic bonds with alternating single and double bonds)')
+    parser.add_argument('--data', type=str, required=True,
+                        help='Path to molecule corpus')
+    parser.add_argument('--vocab_size', type=int,
+                        default=500, help='Length of vocab')
+    parser.add_argument('--output', type=str, required=True,
+                        help='Path to save vocab')
+    parser.add_argument('--workers', type=int, default=16,
+                        help='Number of cpus to use')
+    parser.add_argument('--kekulize', action='store_true',
+                        help='Whether to kekulize the molecules (i.e. replace aromatic bonds with alternating single and double bonds)')
     return parser.parse_args()
 
 

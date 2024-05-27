@@ -5,16 +5,15 @@ import os.path as osp
 import pickle
 import shutil
 
+import numpy as np
 import pandas as pd
 import torch
 from ogb.utils import smiles2graph
 from ogb.utils.torch_util import replace_numpy_with_torchtensor
 from ogb.utils.url import decide_download
-from torch_geometric.data import Data, download_url
-from torch_geometric.data import InMemoryDataset
-from tqdm import tqdm
 from rdkit import Chem
-import numpy as np
+from torch_geometric.data import Data, InMemoryDataset, download_url
+from tqdm import tqdm
 
 
 class PeptidesStructuralDataset(InMemoryDataset):
@@ -53,7 +52,8 @@ class PeptidesStructuralDataset(InMemoryDataset):
         self.folder = osp.join(root, 'peptides-structural')
 
         self.url = 'https://www.dropbox.com/s/464u3303eu2u4zp/peptide_structure_dataset.csv.gz?dl=1'
-        self.version = '9786061a34298a0684150f2e4ff13f47'  # MD5 hash of the intended dataset file
+        # MD5 hash of the intended dataset file
+        self.version = '9786061a34298a0684150f2e4ff13f47'
         self.url_stratified_split = 'https://www.dropbox.com/s/9dfifzft1hqgow6/splits_random_stratified_peptide_structure.pickle?dl=1'
         self.md5sum_stratified_split = '5a0114bdadc80b94fc7ae974f13ef061'
 
@@ -153,6 +153,7 @@ class PeptidesStructuralDataset(InMemoryDataset):
         split_dict = replace_numpy_with_torchtensor(splits)
         return split_dict
 
+
 class PeptidesFunctionalDataset(InMemoryDataset):
     def __init__(self, root='datasets', smiles2graph=smiles2graph,
                  transform=None, pre_transform=None):
@@ -183,7 +184,8 @@ class PeptidesFunctionalDataset(InMemoryDataset):
         self.folder = osp.join(root, 'peptides-functional')
 
         self.url = 'https://www.dropbox.com/s/ol2v01usvaxbsr8/peptide_multi_class_dataset.csv.gz?dl=1'
-        self.version = '701eb743e899f4d793f0e13c8fa5a1b4'  # MD5 hash of the intended dataset file
+        # MD5 hash of the intended dataset file
+        self.version = '701eb743e899f4d793f0e13c8fa5a1b4'
         self.url_stratified_split = 'https://www.dropbox.com/s/j4zcnx2eipuo0xz/splits_random_stratified_peptide.pickle?dl=1'
         self.md5sum_stratified_split = '5a0114bdadc80b94fc7ae974f13ef061'
 
@@ -277,24 +279,24 @@ class PeptidesFunctionalDataset(InMemoryDataset):
 
 
 allowable_features = {
-    'possible_atomic_num_list' : list(range(1, 119)) + ['misc'],
-    'possible_chirality_list' : [
+    'possible_atomic_num_list': list(range(1, 119)) + ['misc'],
+    'possible_chirality_list': [
         'CHI_UNSPECIFIED',
         'CHI_TETRAHEDRAL_CW',
         'CHI_TETRAHEDRAL_CCW',
         'CHI_OTHER',
         'misc'
     ],
-    'possible_degree_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'misc'],
-    'possible_formal_charge_list' : [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 'misc'],
-    'possible_numH_list' : [0, 1, 2, 3, 4, 5, 6, 7, 8, 'misc'],
+    'possible_degree_list': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'misc'],
+    'possible_formal_charge_list': [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 'misc'],
+    'possible_numH_list': [0, 1, 2, 3, 4, 5, 6, 7, 8, 'misc'],
     'possible_number_radical_e_list': [0, 1, 2, 3, 4, 'misc'],
-    'possible_hybridization_list' : [
+    'possible_hybridization_list': [
         'SP', 'SP2', 'SP3', 'SP3D', 'SP3D2', 'misc'
-        ],
+    ],
     'possible_is_aromatic_list': [False, True],
     'possible_is_in_ring_list': [False, True],
-    'possible_bond_type_list' : [
+    'possible_bond_type_list': [
         'SINGLE',
         'DOUBLE',
         'TRIPLE',
@@ -308,9 +310,10 @@ allowable_features = {
         'STEREOCIS',
         'STEREOTRANS',
         'STEREOANY',
-    ], 
+    ],
     'possible_is_conjugated_list': [False, True],
 }
+
 
 def safe_index(l, e):
     """
@@ -327,6 +330,7 @@ def safe_index(l, e):
 # i = safe_index(allowable_features['possible_atomic_num_list'], 2)
 # assert allowable_features['possible_atomic_num_list'][i] == 2
 
+
 def atom_to_feature_vector(atom):
     """
     Converts rdkit atom object to feature list of indices
@@ -334,16 +338,24 @@ def atom_to_feature_vector(atom):
     :return: list
     """
     atom_feature = [
-            safe_index(allowable_features['possible_atomic_num_list'], atom.GetAtomicNum()),
-            safe_index(allowable_features['possible_chirality_list'], str(atom.GetChiralTag())),
-            safe_index(allowable_features['possible_degree_list'], atom.GetTotalDegree()),
-            safe_index(allowable_features['possible_formal_charge_list'], atom.GetFormalCharge()),
-            safe_index(allowable_features['possible_numH_list'], atom.GetTotalNumHs()),
-            safe_index(allowable_features['possible_number_radical_e_list'], atom.GetNumRadicalElectrons()),
-            safe_index(allowable_features['possible_hybridization_list'], str(atom.GetHybridization())),
-            allowable_features['possible_is_aromatic_list'].index(atom.GetIsAromatic()),
-            allowable_features['possible_is_in_ring_list'].index(atom.IsInRing()),
-            ]
+        safe_index(
+            allowable_features['possible_atomic_num_list'], atom.GetAtomicNum()),
+        safe_index(allowable_features['possible_chirality_list'], str(
+            atom.GetChiralTag())),
+        safe_index(
+            allowable_features['possible_degree_list'], atom.GetTotalDegree()),
+        safe_index(
+            allowable_features['possible_formal_charge_list'], atom.GetFormalCharge()),
+        safe_index(
+            allowable_features['possible_numH_list'], atom.GetTotalNumHs()),
+        safe_index(
+            allowable_features['possible_number_radical_e_list'], atom.GetNumRadicalElectrons()),
+        safe_index(allowable_features['possible_hybridization_list'], str(
+            atom.GetHybridization())),
+        allowable_features['possible_is_aromatic_list'].index(
+            atom.GetIsAromatic()),
+        allowable_features['possible_is_in_ring_list'].index(atom.IsInRing()),
+    ]
     return atom_feature
 # from rdkit import Chem
 # mol = Chem.MolFromSmiles('Cl[C@H](/C=C/C)Br')
@@ -363,7 +375,8 @@ def get_atom_feature_dims():
         allowable_features['possible_hybridization_list'],
         allowable_features['possible_is_aromatic_list'],
         allowable_features['possible_is_in_ring_list']
-        ]))
+    ]))
+
 
 def bond_to_feature_vector(bond):
     """
@@ -372,33 +385,38 @@ def bond_to_feature_vector(bond):
     :return: list
     """
     bond_feature = [
-                safe_index(allowable_features['possible_bond_type_list'], str(bond.GetBondType())),
-                allowable_features['possible_bond_stereo_list'].index(str(bond.GetStereo())),
-                allowable_features['possible_is_conjugated_list'].index(bond.GetIsConjugated()),
-            ]
+        safe_index(allowable_features['possible_bond_type_list'], str(
+            bond.GetBondType())),
+        allowable_features['possible_bond_stereo_list'].index(
+            str(bond.GetStereo())),
+        allowable_features['possible_is_conjugated_list'].index(
+            bond.GetIsConjugated()),
+    ]
     return bond_feature
 # uses same molecule as atom_to_feature_vector test
 # bond = mol.GetBondWithIdx(2)  # double bond with stereochem
 # bond_feature = bond_to_feature_vector(bond)
 # assert bond_feature == [1, 2, 0]
 
+
 def get_bond_feature_dims():
     return list(map(len, [
         allowable_features['possible_bond_type_list'],
         allowable_features['possible_bond_stereo_list'],
         allowable_features['possible_is_conjugated_list']
-        ]))
+    ]))
+
 
 def atom_feature_vector_to_dict(atom_feature):
-    [atomic_num_idx, 
-    chirality_idx,
-    degree_idx,
-    formal_charge_idx,
-    num_h_idx,
-    number_radical_e_idx,
-    hybridization_idx,
-    is_aromatic_idx,
-    is_in_ring_idx] = atom_feature
+    [atomic_num_idx,
+     chirality_idx,
+     degree_idx,
+     formal_charge_idx,
+     num_h_idx,
+     number_radical_e_idx,
+     hybridization_idx,
+     is_aromatic_idx,
+     is_in_ring_idx] = atom_feature
 
     feature_dict = {
         'atomic_num': allowable_features['possible_atomic_num_list'][atomic_num_idx],
@@ -425,10 +443,11 @@ def atom_feature_vector_to_dict(atom_feature):
 # assert atom_feature_dict['is_aromatic'] == False
 # assert atom_feature_dict['is_in_ring'] == False
 
+
 def bond_feature_vector_to_dict(bond_feature):
-    [bond_type_idx, 
-    bond_stereo_idx,
-    is_conjugated_idx] = bond_feature
+    [bond_type_idx,
+     bond_stereo_idx,
+     is_conjugated_idx] = bond_feature
 
     feature_dict = {
         'bond_type': allowable_features['possible_bond_type_list'][bond_type_idx],
@@ -437,6 +456,7 @@ def bond_feature_vector_to_dict(bond_feature):
     }
 
     return feature_dict
+
 
 def smiles2graph_add_mol(smiles_string, removeHs=True, reorder_atoms=False):
     """
@@ -447,18 +467,18 @@ def smiles2graph_add_mol(smiles_string, removeHs=True, reorder_atoms=False):
 
     mol = Chem.MolFromSmiles(smiles_string)
     mol = mol if removeHs else Chem.AddHs(mol)
-    if reorder_atoms:
-        mol, _ = ReorderCanonicalRankAtoms(mol)
+    # if reorder_atoms:
+    #     mol, _ = ReorderCanonicalRankAtoms(mol)
 
     # atoms
     atom_features_list = []
     for atom in mol.GetAtoms():
         atom_features_list.append(atom_to_feature_vector(atom))
-    x = np.array(atom_features_list, dtype = np.int64)
+    x = np.array(atom_features_list, dtype=np.int64)
 
     # bonds
     num_bond_features = 3  # bond type, bond stereo, is_conjugated
-    if len(mol.GetBonds()) > 0: # mol has bonds
+    if len(mol.GetBonds()) > 0:  # mol has bonds
         edges_list = []
         edge_features_list = []
         for bond in mol.GetBonds():
@@ -474,14 +494,14 @@ def smiles2graph_add_mol(smiles_string, removeHs=True, reorder_atoms=False):
             edge_features_list.append(edge_feature)
 
         # data.edge_index: Graph connectivity in COO format with shape [2, num_edges]
-        edge_index = np.array(edges_list, dtype = np.int64).T
+        edge_index = np.array(edges_list, dtype=np.int64).T
 
         # data.edge_attr: Edge feature matrix with shape [num_edges, num_edge_features]
-        edge_attr = np.array(edge_features_list, dtype = np.int64)
+        edge_attr = np.array(edge_features_list, dtype=np.int64)
 
     else:   # mol has no bonds
-        edge_index = np.empty((2, 0), dtype = np.int64)
-        edge_attr = np.empty((0, num_bond_features), dtype = np.int64)
+        edge_index = np.empty((2, 0), dtype=np.int64)
+        edge_attr = np.empty((0, num_bond_features), dtype=np.int64)
 
     graph = dict()
     graph['edge_index'] = edge_index
@@ -490,4 +510,4 @@ def smiles2graph_add_mol(smiles_string, removeHs=True, reorder_atoms=False):
     graph['num_nodes'] = len(x)
     graph["mol"] = mol
 
-    return graph 
+    return graph
