@@ -1,25 +1,23 @@
-from sacred import Experiment
+import os
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import seml
-from typing import List, Dict, Optional, Tuple
-import datasets.data
-import datasets.data_ood
-from models.gcn import GCN, VerySimpleGCN, GCNSubstructure, HimpNet, HimpNetHigherGraph, HimpNetAlternative, HimpNetSmall
-from models.hlg import HLG, HLGAlternative, HLG_Old, HLG_HIMP
-from models.substructure_model import SubstructureNeuralNet
-from models.pool_linear import PoolLinear, GlobalLinear
-from models.lightning_models import *
-from models.lightning_progress_bar import MeterlessProgressBar
-
-from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
-import wandb
-import os
-
+from pytorch_lightning.callbacks import (EarlyStopping, LearningRateMonitor,
+                                         ModelCheckpoint)
+from pytorch_lightning.loggers import WandbLogger
+from sacred import Experiment
 from torch_geometric.seed import seed_everything
 
-checkpoint_dir = "/ceph/hdd/students/kempern/substructure-gnns/models/checkpoints/checkpoints"
+import data.data
+import data.data_ood
+import wandb
+from config import CHECKPOINT_DIR
+from models.fragGNN import FragGNN, FragGNNSmall
+from models.gcn import GCN, GCNSubstructure, VerySimpleGCN
+from models.lightning_models import *
+
 ex = Experiment()
 seml.setup_logger(ex)
 
@@ -44,7 +42,6 @@ class ExperimentWrapper:
         if init_all:
             self.init_all()
 
-    # With the prefix option we can "filter" the configuration for the sub-dictionary under "data".
     @ex.capture(prefix="data")
     def init_dataset(self,
                      _config,
@@ -75,17 +72,17 @@ class ExperimentWrapper:
             Tuple ``(name_of_fragmentation, type_of_fragmentation, vocab_size)``.
         loader_params, optional
             Dictionary containing train_fraction, val_fraction and batch_size, not needed for Planetoid datasets, by default None.
-        encoding_list, optional
+        encoding, optional
             List of encodings that should be used.
         dataset_params, optional
-            If subset_frac in dataset_params: Only subset_fracof the dataset will be used for training.
+            If subset_frac in dataset_params: Only subset_frac of the dataset will be used for training.
             If filter in dataset_params: Only molecules containing no ring of size filter will be used for training.
             If higher_edge_features in dataset_params: Information about the edges in the higher level graph will be computed.
             If dataset_seed in dataset_params: Seperate seed for the dataset split.
         """
         print(f"Dataset received config: {_config}")
         if seed is not None:
-            #torch.manual_seed(seed)
+            # torch.manual_seed(seed)
             seed_everything(seed)
 
         if fragmentation_method:
@@ -94,8 +91,8 @@ class ExperimentWrapper:
             self.num_substructures = None
 
         if "filter" in dataset_params:
-            # ood experiment
-            self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = datasets.data_ood.load_fragmentation(
+            # only used in the ood experiment
+            self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = data.data_ood.load_fragmentation(
                 dataset,
                 remove_node_features=remove_node_features,
                 one_hot_degree=one_hot_degree,
@@ -105,7 +102,7 @@ class ExperimentWrapper:
                 loader_params=loader_params,
                 **dataset_params)
         else:
-            self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = datasets.data.load_fragmentation(
+            self.train_loader, self.val_loader, self.test_loader, self.num_features, self.num_classes = data.data.load_fragmentation(
                 dataset,
                 remove_node_features=remove_node_features,
                 one_hot_degree=one_hot_degree,
@@ -132,59 +129,21 @@ class ExperimentWrapper:
         model_params["in_channels"] = self.num_features
         if model_type == "GCN":
             self.model = GCN(**model_params)
-        elif model_type == "SubstrucutureNet":
-            model_params["num_substructures"] = self.num_substructures
-            self.model = SubstructureNeuralNet(**model_params)
         elif model_type == "VerySimpleGCN":
             self.model = VerySimpleGCN(**model_params)
-        elif model_type == "PoolLinear":
-            self.model = PoolLinear(**model_params)
-        elif model_type == "GlobalLinear":
-            model_params.pop("in_channels")  #does not need in_channels
-            self.model = GlobalLinear(**model_params)
         elif model_type == "GCNSubstructure":
             model_params["in_channels_substructure"] = self.num_substructures
             self.model = GCNSubstructure(**model_params)
-        elif model_type == "HimpNet":
+        elif model_type == "FragGNNSmall":
             model_params["in_channels_substructure"] = self.num_substructures
             model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HimpNet(**model_params)
-        elif model_type == "HimpNetHigherGraph":
+                "in_channels_edge"] = 4  # TODO: could be different for other datasets
+            self.model = FragGNNSmall(**model_params)
+        elif model_type == "FragGNN":
             model_params["in_channels_substructure"] = self.num_substructures
             model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HimpNetHigherGraph(**model_params)
-        elif model_type == "HimpNetAlternative":
-            model_params["in_channels_substructure"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HimpNetAlternative(**model_params)
-        elif model_type == "HLG":
-            model_params["in_channels_frag"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HLG(**model_params)
-        elif model_type == "HLGAlternative":
-            model_params["in_channels_frag"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HLGAlternative(**model_params)
-        elif model_type == "HLG_Old":
-            model_params["in_channels_frag"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HLG_Old(**model_params)
-        elif model_type == "HLG_HIMP":
-            model_params["in_channels_frag"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HLG_HIMP(**model_params)
-        elif model_type == "HimpNetSmall":
-            model_params["in_channels_substructure"] = self.num_substructures
-            model_params[
-                "in_channels_edge"] = 4  #TODO: could be different for other datasets
-            self.model = HimpNetSmall(**model_params)
+                "in_channels_edge"] = 4  # TODO: could be different for other datasets
+            self.model = FragGNN(**model_params)
         else:
             raise RuntimeError(f"Model {model_type} not supported")
         print("Setup model:")
@@ -221,6 +180,9 @@ class ExperimentWrapper:
                 additional_metric_func = auroc
             elif additional_metric == "ap":
                 additional_metric_func = average_multilabel_precision
+            elif additional_metric == "counting_experiment":
+                additional_metric_func = [
+                    regression_acc, regression_precision, regression_recall, num_true_positives]
 
         self.lightning_model = LightningModel(
             model=self.model,
@@ -240,20 +202,23 @@ class ExperimentWrapper:
         self.init_optimizer()
 
     @ex.capture()
-    def train(self, trainer_params, project_name, _config, notes="", ckpt_path=None):
+    def train(self, trainer_params, project_name, _config, notes="", ckpt_path=None, wandb=True):
 
-        checkpoint_directory = f"{checkpoint_dir}/{_config['db_collection']}/run-{_config['overwrite']}"
+        checkpoint_directory = f"{CHECKPOINT_DIR}/{_config['db_collection']}/run-{_config['overwrite']}"
         if not os.path.exists(checkpoint_directory):
             os.makedirs(checkpoint_directory)
 
-        wandb_logger = WandbLogger(
-            name=f"{_config['db_collection']}_{_config['overwrite']}",
-            project=project_name,
-            save_dir=checkpoint_directory,
-            notes=notes,
-            entity="frags")
-        wandb_logger.experiment.config.update(_config)
-        #wandb_logger.watch(self.lightning_model, log="all")
+        if wandb:
+            wandb_logger = WandbLogger(
+                name=f"{_config['db_collection']}_{_config['overwrite']}",
+                project=project_name,
+                save_dir=checkpoint_directory,
+                notes=notes,
+                entity="frags")
+            wandb_logger.experiment.config.update(_config)
+        else:
+            wandb_logger = None
+        # wandb_logger.watch(self.lightning_model, log="all")
 
         # bar = MeterlessProgressBar() # progress bar without a running bar
 
@@ -263,7 +228,7 @@ class ExperimentWrapper:
             }
         else:
             additional_params = {}
-        
+
         monitor = trainer_params["monitor"] if "monitor" in trainer_params else "val_loss"
         mode = "min" if monitor == "val_loss" else "max"
         patience = trainer_params["patience_early_stopping"] if "patience_early_stopping" in trainer_params else 50
@@ -273,15 +238,14 @@ class ExperimentWrapper:
                 max_epochs=trainer_params["max_epochs"],
                 logger=wandb_logger,
                 log_every_n_steps=15,
-                default_root_dir=
-                f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
+                default_root_dir=checkpoint_directory,
                 detect_anomaly=True,
                 callbacks=[
                     EarlyStopping(monitor=monitor,
                                   mode=mode,
                                   patience=patience,
                                   verbose=True),
-                    ModelCheckpoint(monitor=monitor, mode = mode)
+                    ModelCheckpoint(monitor=monitor, mode=mode)
                 ],
                 enable_progress_bar=False,
                 **additional_params)
@@ -290,15 +254,14 @@ class ExperimentWrapper:
                 max_epochs=trainer_params["max_epochs"],
                 logger=wandb_logger,
                 log_every_n_steps=15,
-                default_root_dir=
-                f"./models/checkpoints/{_config['db_collection']}-{_config['overwrite']}",
+                default_root_dir=checkpoint_directory,
                 detect_anomaly=True,
                 callbacks=[
                     EarlyStopping(monitor=monitor,
                                   mode=mode,
                                   patience=patience,
                                   verbose=True),
-                    ModelCheckpoint(monitor=monitor, mode = mode)
+                    ModelCheckpoint(monitor=monitor, mode=mode)
                 ],
                 enable_progress_bar=False,
                 **additional_params)
@@ -306,13 +269,15 @@ class ExperimentWrapper:
         trainer.fit(self.lightning_model,
                     train_dataloaders=self.train_loader,
                     val_dataloaders=self.val_loader,
-                    ckpt_path= ckpt_path)
+                    ckpt_path=ckpt_path)
         if trainer_params["testing"] == True:
             result = trainer.test(self.lightning_model, self.test_loader)
-            wandb.finish()
+            if wandb:
+                wandb.finish()
             return result
         else:
-            wandb.finish()
+            if wandb:
+                wandb.finish()
 
 
 # We can call this command, e.g., from a Jupyter notebook with init_all=False to get an "empty" experiment wrapper,
