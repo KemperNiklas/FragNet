@@ -1,9 +1,9 @@
 """Adapted from https://github.com/TUM-DAML/synthetic_coordinates/"""
-from rdkit.Chem import AllChem as Chem
 import pandas as pd
 import torch
 # from rdkit.Chem import AllChem as Chem
 from rdkit import Chem
+from rdkit.Chem import AllChem as Chem
 from rdkit.Chem.rdmolops import FastFindRings
 from torch_geometric.transforms import BaseTransform
 from torch_scatter import scatter
@@ -85,7 +85,8 @@ def atom_ndx_to_atom(ndx):
 
 class ZINC_Graph_Add_Mol(BaseTransform):
     """
-    Convert ZINC graph to an RDKit molecule
+    Add rdkit mol object to ZINC graph. 
+    In some edge cases the molecule night not exactly correspond to the original molecule.
     """
 
     def __init__(self):

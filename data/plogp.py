@@ -1,4 +1,3 @@
-import sascorer
 import os
 import sys
 
@@ -7,10 +6,10 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, RDConfig
 from torch_geometric.transforms import BaseTransform
 
+#import sascorer
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 # now you can import sascore!
-
-# from rdkit.Contrib.SA_Score import sascorer
+from rdkit.Contrib.SA_Score import sascorer
 
 
 def penalized_logp(mol):
