@@ -44,15 +44,15 @@ class AtomEncoder(torch.nn.Module):
         if x.dim() == 1:
             x = x.unsqueeze(1)
 
-            out = 0
-            for i in range(x.size(1)):
-                out += self.embeddings[i](x[:, i])
+        out = 0
+        for i in range(x.size(1)):
+            out += self.embeddings[i](x[:, i])
 
-            if self.degree_scaling:
-                out[:, :self.hidden_channels//2] = torch.unsqueeze(
-                    degree_info, dim=1) * out[:, :self.hidden_channels//2]
+        if self.degree_scaling:
+            out[:, :self.hidden_channels//2] = torch.unsqueeze(
+                degree_info, dim=1) * out[:, :self.hidden_channels//2]
 
-            return out
+        return out
 
 
 class BondEncoder(torch.nn.Module):

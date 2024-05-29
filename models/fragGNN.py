@@ -432,11 +432,6 @@ class FragGNNSmall(torch.nn.Module):
         if self.inter_message_passing:
             self.frag_convs = ModuleList()
             self.frag_batch_norms = ModuleList()
-            if self.graph_rep:
-                self.fragment2graph = ModuleList()
-                self.graph2fragment = ModuleList()
-            if self.concat:
-                self.concat_lins = ModuleList()
 
             for _ in range(num_layers):
                 nn = Sequential(
@@ -447,11 +442,8 @@ class FragGNNSmall(torch.nn.Module):
                     Linear(self.hidden_channels_substructure,
                            self.hidden_channels_substructure),
                 )
-                if self.higher_level_edge_features:
-                    self.frag_convs.append(
-                        GINEConv(nn, train_eps=True, edge_dim=self.hidden_channels))
-                else:
-                    self.frag_convs.append(GINConv(nn, train_eps=True))
+
+                self.frag_convs.append(GINConv(nn, train_eps=True))
                 self.frag_batch_norms.append(
                     BatchNorm1d(self.hidden_channels_substructure))
 
