@@ -202,13 +202,13 @@ class ExperimentWrapper:
         self.init_optimizer()
 
     @ex.capture()
-    def train(self, trainer_params, project_name, _config, notes="", ckpt_path=None, wandb=True):
+    def train(self, trainer_params, project_name, _config, notes="", ckpt_path=None, use_wandb=True):
 
         checkpoint_directory = f"{CHECKPOINT_DIR}/{_config['db_collection']}/run-{_config['overwrite']}"
         if not os.path.exists(checkpoint_directory):
             os.makedirs(checkpoint_directory)
 
-        if wandb:
+        if use_wandb:
             wandb_logger = WandbLogger(
                 name=f"{_config['db_collection']}_{_config['overwrite']}",
                 project=project_name,
@@ -218,9 +218,6 @@ class ExperimentWrapper:
             wandb_logger.experiment.config.update(_config)
         else:
             wandb_logger = None
-        # wandb_logger.watch(self.lightning_model, log="all")
-
-        # bar = MeterlessProgressBar() # progress bar without a running bar
 
         if "gradient_clip_val" in trainer_params:
             additional_params = {
@@ -272,11 +269,12 @@ class ExperimentWrapper:
                     ckpt_path=ckpt_path)
         if trainer_params["testing"] == True:
             result = trainer.test(self.lightning_model, self.test_loader)
-            if wandb:
+            print(f"Test result: {result}")
+            if use_wandb:
                 wandb.finish()
             return result
         else:
-            if wandb:
+            if use_wandb:
                 wandb.finish()
 
 
