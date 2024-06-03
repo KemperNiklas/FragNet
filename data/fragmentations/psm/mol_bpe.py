@@ -1,5 +1,3 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
 import argparse
 import json
 import multiprocessing as mp
@@ -12,6 +10,8 @@ from data.fragmentations.psm.utils.chem_utils import (MAX_VALENCE, cnt_atom,
                                                       get_submol, mol2smi,
                                                       smi2mol)
 from data.fragmentations.psm.utils.logger import print_log
+
+"""Adapted from https://github.com/THUNLP-MT/PS-VAE"""
 
 '''classes below are used for principal subgraph extraction'''
 

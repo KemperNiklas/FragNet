@@ -13,6 +13,8 @@ from data.fragmentations.psm.utils.chem_utils import (get_submol,
                                                       get_submol_atom_map,
                                                       mol2smi, smi2mol)
 
+"""Adapted from https://github.com/THUNLP-MT/PS-VAE"""
+
 
 class SubgraphNode:
     '''

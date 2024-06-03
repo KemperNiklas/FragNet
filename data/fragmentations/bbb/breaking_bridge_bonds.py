@@ -4,6 +4,8 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from rdkit import Chem
 
+# Taken from https://github.com/microsoft/molecule-generation/tree/48d532f7e95dff822a84ffd603f41253ac07dbdd
+
 logger = logging.getLogger(__name__)
 
 
