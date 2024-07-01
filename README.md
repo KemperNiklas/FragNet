@@ -15,7 +15,7 @@ All experiments are managed with [seml](https://github.com/TUM-DAML/seml). So if
 ```bash
 seml configure
 ```
-More details in the [seml documentation](https://github.com/TUM-DAML/seml?tab=readme-ov-file#get-started).
+More details can be found in the [seml documentation](https://github.com/TUM-DAML/seml?tab=readme-ov-file#get-started).
 
 
 ## Benchmark results
@@ -30,7 +30,7 @@ where you replace experiment/xyz.yaml with the configuration file for the corres
 
 Note that since writing the paper, we slightly updated/simplified the model. Hence, the results might slightly deviate from the published results. These results can be expected:
 
-| Benchmark | Result |
+| Dataset | Result |
 |---- | ---|
 |ZINC-10k | 0.0802 ± 0.0037 (MAE) |
 |ZINC-full | TODO |
