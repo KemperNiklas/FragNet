@@ -1,4 +1,4 @@
-name: substructureML2
+name: fragNet
 channels:
   - pytorch
   - pyg
