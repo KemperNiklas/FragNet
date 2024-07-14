@@ -40,7 +40,7 @@ fixed:
     fragmentation_method: ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
     
   model:
-    model_type: "FragGNNSmall"
+    model_type: "HimpNetSmall"
     classification: False
     model_params:
       dropout: 0.05
@@ -49,7 +49,8 @@ fixed:
       num_layers_out: 3
       inter_message_passing: True
       higher_message_passing: True
-      ordinal_encoding: True
+      encoding_size_scaling: True
+      degree_scaling: False
       learned_edge_rep: True
       inter_message_params.reduction: "mean"
       frag_reduction: "sum"

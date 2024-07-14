@@ -22,10 +22,10 @@ slurm:
 fixed:
   project_name: "ZINC_full_final"
   trainer_params:
-    max_epochs: 1000 # has to be changed below too
+    max_epochs: 2000 # has to be changed below too
     testing: True
-    min_lr: 1e-8
-    patience_early_stopping: 400
+    min_lr: 1e-6
+    patience_early_stopping: 1000
     gradient_clip_val: 1
 
   data:
@@ -39,16 +39,17 @@ fixed:
     fragmentation_method: ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
     
   model:
-    model_type: "FragGNNSmall"
+    model_type: "HimpNet"
     classification: False
     model_params:
       hidden_channels: 120
       dropout: 0
-      num_layers: 3
+      num_layers: 5
       num_layers_out: 3
       inter_message_passing: True
       higher_message_passing: True
-      ordinal_encoding: True
+      encoding_size_scaling: True
+      degree_scaling: False
       learned_edge_rep: True
       reduction: "sum"
       inter_message_params.reduction: "mean"
@@ -66,14 +67,11 @@ fixed:
   optimization:
     loss: "mae"
     scheduler_parameters:
-      cooldown: 5
-      factor: 0.9
-      mode: "min"
-      patience: 15
-    optimization_params:
-      weight_decay: 0
-      lr: 0.001
-    ema_decay: 0.99
+      name: "cosine_with_warmup"
+      num_warmup_epochs: 50
+      max_epochs: 2000 #has to be changed above too
+      min_lr: 1e-6
+    optimization_params.weight_decay: 1e-4
 
 grid:
 
