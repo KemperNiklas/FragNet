@@ -1,7 +1,7 @@
 seml:
   executable: main_experiment.py
   name: peptides_func
-  output_dir: /ceph/hdd/students/kempern/experiment/logs/peptides_func
+  output_dir: experiment/logs/peptides_func
   project_root_dir: ~/substructure-gnns
 #  description: A first test.
 
