@@ -1,0 +1,158 @@
+seml:
+  executable: experiment_oversquashing.py
+  name: oversquashing_handcuffs
+  output_dir: experiment/logs/oversquashing_handcuffs
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 10
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    #mem: 16G          # memory
+    mem: 32G          # memory
+    #cpus-per-task: 4  # num cores
+    cpus-per-task: 8  # num cores
+    #time: 0-00:55     # max time, D-HH:MM
+    time: 0-02:00
+    partition: "gpu_all"
+    #exclude: gpu12,gpu20
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "oversquashing experiment ring"
+  notes: "more seeds"
+  trainer_params:
+    max_epochs: 200
+    testing: False
+    min_lr: 4e-6
+
+  data:
+    dataset: "handcuffs"
+    #dataset: "ring"
+    loader_params:
+      batch_size: 128
+      num_workers: 2
+
+    dataset_params:
+      num_classes: 10
+      num_samples: 1000
+      num_val_samples: 10
+      dataset_seed: 0
+
+
+  model:
+    model_type: "HimpNetSmallGraphLevel"
+    classification: True
+    model_params:
+      num_layers: 3
+      hidden_channels: 64
+      inter_message_params:
+        reduction: "sum"
+
+
+
+  optimization:
+    optimization_params:
+      lr: 0.001
+      #weight_decay: 5e-4
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 20
+
+grid:
+
+  data.dataset_params.target_node:
+    type: choice
+    options:
+      #- "L0"
+      #- "L1"
+      #- "L2"
+      # "L3"
+      #- "L4"
+      - "P0"
+      - "P1"
+      - "P2"
+      - "R0"
+      - "R1"
+      - "R2"
+      - "R3"
+      - "R4"
+      - "R5"
+    zip_id: target_node
+  
+  data.seed:
+    type: choice
+    options:
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+
+
+RingsPaths:
+  fixed:
+    data.fragmentation_method: "rings-paths"
+
+# Rings:
+#   fixed:
+#     data.fragmentation_method: "rings"
+  
+#   grid:
+#     model.model_params.num_layers:
+#       type: choice
+#       options:
+#         - 3
+#         - 3
+#         - 3
+#         - 3
+#         - 3
+#         - 3
+#         - 3
+#         - 4
+#         - 6
+#         - 6
+#         - 6
+#         - 6
+#         - 6
+#         - 6
+#       zip_id: target_node
+
+# None:
+#   fixed:
+#     data.fragmentation_method: None
+  
+#   grid:
+    
+#     model.model_params.num_layers:
+#       type: choice
+#       options:
+#         - 3
+#         - 3
+#         - 3
+#         - 3
+#         - 3 #end first ring
+#         - 3
+#         - 3
+#         - 4 # end path
+#         - 6
+#         - 5
+#         - 6
+#         - 7
+#         - 8
+#         - 7 
+
+#       zip_id: target_node
+
+
+  
+

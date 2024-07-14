@@ -1,0 +1,124 @@
+seml:
+  executable: experiment_oversquashing.py
+  name: oversquashing
+  output_dir: experiment/logs/oversquashing
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 8
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    #mem: 16G          # memory
+    mem: 32G          # memory
+    #cpus-per-task: 4  # num cores
+    cpus-per-task: 8  # num cores
+    #time: 0-00:55     # max time, D-HH:MM
+    time: 0-02:00
+    partition: "gpu_all"
+    #exclude: gpu12,gpu20
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "oversquashing experiment ring"
+  notes: "with changed dataset and maybe good model"
+  trainer_params:
+    max_epochs: 200
+    testing: False
+    min_lr: 4e-6
+
+  data:
+    dataset: "lollipop"
+    #dataset: "ring"
+    loader_params:
+      batch_size: 128
+      num_workers: 2
+
+    dataset_params:
+      num_nodes: 4
+      num_classes: 5
+      num_samples: 1000
+      num_val_samples: 500
+      dataset_seed: 0
+
+
+  model:
+    model_type: "HimpNetSmallGraphLevel"
+    classification: True
+    model_params:
+      num_layers: 3
+      hidden_channels: 64
+      inter_message_params:
+        reduction: "sum"
+
+
+
+  optimization:
+    optimization_params:
+      lr: 0.001
+      #weight_decay: 5e-4
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 20
+
+
+RingsPaths:
+  grid:
+
+    data.dataset_params.num_nodes:
+      type: range
+      min: 8
+      max: 24
+      step: 4
+
+    data.fragmentation_method:
+      type: choice
+      options:
+        - "rings-paths"
+
+None:
+  grid:
+
+    data.dataset_params.num_nodes:
+      type: range
+      min: 8
+      max: 24
+      step: 4
+      zip_id: layer
+    
+    model.model_params.num_layers:
+      type: range
+      min: 6
+      max: 18
+      step: 3
+      zip_id: layer
+
+    data.fragmentation_method:
+      type: choice
+      options:
+        - None
+
+Rings:
+  grid:
+
+    data.dataset_params.num_nodes:
+      type: range
+      min: 8
+      max: 24
+      step: 4
+      zip_id: layer
+    
+    model.model_params.num_layers:
+      type: range
+      min: 5
+      max: 13
+      step: 2
+      zip_id: layer
+
+    data.fragmentation_method:
+      type: choice
+      options:
+        - "rings"
