@@ -16,8 +16,7 @@ slurm:
     cpus-per-task: 6  # num cores
     #time: 0-00:55     # max time, D-HH:MM
     time: 0-09:00
-    partition: gpu_all
-    #exclude: gpu04,gpu12,gpu13,gpu08,gpu10,mdsi-gpu01,mdsi-gpu02
+    partition: gpu_a100
 
 ###### BEGIN PARAMETER CONFIGURATION ######
 fixed:
