@@ -14,8 +14,8 @@ import data.data
 import data.data_ood
 import wandb
 from config import CHECKPOINT_DIR
-from models.fragGNN import FragGNN, FragGNNSmall
-from models.gcn import GCN, GCNSubstructure, VerySimpleGCN
+from models.gcn import (GCN, GCNSubstructure, HimpNet, HimpNetSmall,
+                        VerySimpleGCN)
 from models.lightning_models import *
 
 ex = Experiment()
@@ -134,16 +134,16 @@ class ExperimentWrapper:
         elif model_type == "GCNSubstructure":
             model_params["in_channels_substructure"] = self.num_substructures
             self.model = GCNSubstructure(**model_params)
-        elif model_type == "FragGNNSmall":
+        elif model_type == "HimpNetSmall":
             model_params["in_channels_substructure"] = self.num_substructures
             model_params[
                 "in_channels_edge"] = 4  # TODO: could be different for other datasets
-            self.model = FragGNNSmall(**model_params)
-        elif model_type == "FragGNN":
+            self.model = HimpNetSmall(**model_params)
+        elif model_type == "HimpNet":
             model_params["in_channels_substructure"] = self.num_substructures
             model_params[
                 "in_channels_edge"] = 4  # TODO: could be different for other datasets
-            self.model = FragGNN(**model_params)
+            self.model = HimpNet(**model_params)
         else:
             raise RuntimeError(f"Model {model_type} not supported")
         print("Setup model:")
