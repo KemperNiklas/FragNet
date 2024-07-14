@@ -1,0 +1,58 @@
+seml:
+  executable: experiment.py
+  name: node_level_counting
+  output_dir: experiment/logs
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 1
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    cpus-per-task: 2  # num cores
+    time: 0-01:00     # max time, D-HH:MM
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "triangle and square counting (cluster)"
+  trainer_params:
+    max_epochs: 100
+    testing: False
+  data:
+    dataset: "ENZYMES"
+    loader_params:
+      train_fraction: 0.6
+      val_fraction: 0.2
+      batch_size: 32
+      num_workers: 2
+    remove_node_features: True
+  
+  model:
+    model_type: "SubstrucutureNet"
+    model_params:
+      hidden_channels: 16
+      num_layers: 3
+      graph_level: False
+    classification: False
+  optimization:
+    optimization_params:
+      lr: 0.01
+      weight_decay: 5e-4
+
+grid:
+  data.substructures.ring:
+    type: choice
+    options:
+      - [3,4]
+      - []
+  data.target:
+    type: choice
+    options:
+      - ["ring", 3, True]
+      - ["ring", 4, True]
+  
+
+  

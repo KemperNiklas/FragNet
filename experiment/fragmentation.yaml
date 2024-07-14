@@ -1,0 +1,81 @@
+seml:
+  executable: experiment_fragmentation.py
+  name: fragmentation
+  output_dir: experiment/logs
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 1
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    cpus-per-task: 2  # num cores
+    time: 0-00:55     # max time, D-HH:MM
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "fragmentation (node feature) (improved)"
+  trainer_params:
+    max_epochs: 200
+    testing: False
+    min_lr: 1e-5
+
+  data:
+    seed: 39
+    loader_params:
+      batch_size: 128
+      num_workers: 2
+    dataset: "ZINC"
+    
+  model:
+    model_type: "GCN"
+    classification: False
+    model_params:
+      hidden_channels: 145
+      graph_level: True
+      dropout: 0
+      pool_reduction: "mean"
+      residual: True
+      batch_norm: True
+      num_layers: 4
+
+  optimization:
+    optimization_params:
+      lr: 0.001
+      weight_decay: 5e-4
+    loss: "mae"
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 10
+
+grid:
+  data.fragmentation_method:
+    type: choice
+    options:
+      - []
+      - ["BBB", "node_feature", 100]
+      - ["BRICS", "node_feature", 100]
+      - ["PSM", "node_feature", 100]
+      - ["Rings", "node_feature", 15]
+      - ["Magnet", "node_feature", 100] 
+
+more_layers:
+  fixed:
+    model.model_params.num_layers: 16
+    project_name: "fragmentation (node feature, 16 layers) (improved)"
+  
+less_layers:
+  fixed:
+    model.model_params.num_layers: 4
+    project_name: "fragmentation (node feature) (improved)"
+
+  
+
+
+  
+
+  

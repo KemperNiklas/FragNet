@@ -1,0 +1,106 @@
+seml:
+  executable: experiment_fragmentation.py
+  name: fragmentation_hiv
+  output_dir: experiment/logs
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 1
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    #mem: 32G          # memory
+    cpus-per-task: 4  # num cores
+    #cpus-per-task: 2  # num cores
+    time: 0-01:55     # max time, D-HH:MM
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "fragmentation hiv(learned rep, himp, edge features)"
+  trainer_params:
+    max_epochs: 200
+    testing: False
+    min_lr: 1e-5
+
+  data:
+    seed: 31
+    loader_params:
+      batch_size: 128
+      num_workers: 4
+      val_batch_size: 1000
+    dataset: "ogbg-molhiv"
+    one_hot_edge_features: False
+    one_hot_node_features: False
+    
+    
+  model:
+    model_type: "HimpNet"
+    classification: True
+    model_params:
+      hidden_channels: 64
+      dropout: 0.5
+      num_layers: 2
+      inter_message_passing: True
+
+  optimization:
+    optimization_params:
+      lr: 0.0001
+      #weight_decay: 5e-4
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 50
+    additional_metric: "auroc"
+
+
+
+higher_level:
+  grid:
+    data.fragmentation_method:
+      type: choice
+      options:
+        - ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
+        - ["RingsEdges", "higher_level_graph_tree", {"vocab_size": 16}]
+        - ["Rings", "higher_level_graph_tree", {"vocab_size": 15}]
+        #- ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 16, "max_ring": 15}]
+        # - ["Magnet", "higher_level_graph_node", {"vocab_size": 100}]
+  fixed:
+    model.model_params.higher_message_passing: True
+    model.model_params.inter_message_passing: True
+    model.model_params.encoding_size_scaling: True
+
+# frag_rep:
+#   grid:
+#     data.fragmentation_method:
+#       type: choice
+#       options:
+#         - ["Rings", "fragment", {"vocab_size": 15}]
+#   fixed:
+#     model.model_params.higher_message_passing: False
+#     model.model_params.inter_message_passing: True
+
+# baseline:
+#   grid:
+#     data.fragmentation_method:
+#       type: choice
+#       options:
+#         - data.fragmentation_method: [Rings", "node_feature", {"vocab_size": 15}]
+#   fixed:
+#     model.model_params.inter_message_passing: False
+#     model.model_params.higher_message_passing: False
+#     model.model_params.linear_atom_encoder: True
+
+
+# node_feature_comparison:
+#   fixed:
+#     data.fragmentation_method: ["Magnet", "node_feature", 100]
+#     model.model_params.inter_message_passing: False
+
+
+
+  
+
+  

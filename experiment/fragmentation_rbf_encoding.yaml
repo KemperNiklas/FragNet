@@ -1,0 +1,125 @@
+seml:
+  executable: experiment_fragmentation.py
+  name: fragmentation_rbf_encoding
+  output_dir: experiment/logs/fragmentation_rbf_encoding
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 1
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    #mem: 16G          # memory
+    mem: 32G          # memory
+    #cpus-per-task: 4  # num cores
+    cpus-per-task: 4  # num cores
+    #time: 0-00:55     # max time, D-HH:MM
+    time: 0-06:00
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "fragmentation rbf encoding"
+  trainer_params:
+    max_epochs: 202
+    testing: False
+    min_lr: 1e-5
+
+  data:
+    seed: 40
+    loader_params:
+      batch_size: 128
+      num_workers: 4
+    dataset: "ZINC"
+    one_hot_edge_features: False
+    one_hot_node_features: False
+    
+  model:
+    model_type: "HimpNet"
+    classification: False
+    model_params:
+      hidden_channels: 128
+      dropout: 0
+      num_layers: 3
+      inter_message_passing: True
+      higher_message_passing: True
+      encoding_size_scaling: True
+      degree_scaling: False
+      #rbf: 20
+      #reduction: "sum"
+      #concat: False
+
+
+  optimization:
+    optimization_params:
+      lr: 0.001
+      weight_decay: 5e-4
+    loss: "mae"
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 10
+
+grid:
+  data.fragmentation_method:
+    type: choice
+    options:
+      #- []
+      #- ["BBB", "fragment", 100]
+      #- ["BRICS", "fragment", 100]
+      #- ["PSM", "fragment", 100]
+      - ["Rings", "higher_level_graph_tree", {"vocab_size": 20}]
+      #- ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
+      #- ["RingsEdges", "higher_level_graph_tree", {"vocab_size": 20}]
+      # - ["RingsEdges", "higher_level_graph_node", {"vocab_size": 20}]
+      # - ["Magnet", "higher_level_graph_tree", {"vocab_size": 100}] 
+
+# ZINC_full:
+#   fixed:
+#     project_name: "fragmentation encoding, full dataset"
+#     data.dataset: "ZINC-full"
+#   grid:
+#     data.fragmentation_method:
+#       type: choice
+#       options:
+#         #- []
+#         #- ["BBB", "fragment", 100]
+#         #- ["BRICS", "fragment", 100]
+#         #- ["PSM", "fragment", 100]
+#         #- ["Rings", "higher_level_graph_tree", {"vocab_size": 20}]
+#         #- ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
+#         #- ["RingsEdges", "higher_level_graph_tree", {"vocab_size": 20}]
+#         # - ["RingsEdges", "higher_level_graph_node", {"vocab_size": 20}]
+#         - ["Magnet", "higher_level_graph_tree", {"vocab_size": 100}] 
+
+# magnet_full:
+#   fixed:
+#       project_name: "fragmentation encoding, full dataset"
+#       data.dataset: "ZINC-full"
+#       data.fragmentation_method: ["Magnet", "higher_level_graph_tree", {"vocab_size": 100}] 
+#       model.model_params.inter_message_passing: True
+#       model.model_params.higher_message_passing: True
+#       model.model_params.encoding_size_scaling: False
+#       model.model_params.degree_scaling: True
+
+# baseline_full:
+#   fixed:
+#     project_name: "fragmentation encoding, full dataset"
+#     data.dataset: "ZINC-full"
+#     data.fragmentation_method: []
+#     model.model_params.inter_message_passing: False
+#     model.model_params.higher_message_passing: False
+#     model.model_params.encoding_size_scaling: False
+#     model.model_params.degree_scaling: True
+
+# node_feature_comparison:
+#   fixed:
+#     data.fragmentation_method: ["Magnet", "node_feature", 100]
+#     model.model_params.inter_message_passing: False
+
+
+
+  
+
+  

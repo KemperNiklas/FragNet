@@ -1,0 +1,94 @@
+seml:
+  executable: experiment.py
+  name: ZINC_exploration
+  output_dir: experiment/logs
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 1
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    cpus-per-task: 1  # num cores
+    time: 0-00:40     # max time, D-HH:MM
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "ZINC_exploration"
+  trainer_params:
+    max_epochs: 1000
+    testing: False
+    min_lr: 0.0001
+  data:
+    seed: 41
+    loader_params:
+      batch_size: 128
+      num_workers: 1
+    
+
+  model:
+    model_type: "GCN"
+    model_params:
+      hidden_channels: 145
+      graph_level: True
+      dropout: 0
+      pool_reduction: "mean"
+      residual: True
+      batch_norm: True
+
+  optimization:
+    optimization_params:
+      lr: 0.001
+      weight_decay: 0
+    scheduler_parameters:
+      mode: "min"
+      factor: 0.5
+      patience: 10
+    loss: "mae"
+    additional_metric: "mse"
+
+dataset_ZINC:
+  fixed:
+    model.classification: False
+    data.dataset: "ZINC"
+    data.remove_node_features: False
+
+grid:
+
+    data.substructure_node_feature: 
+      type: choice
+      options:
+        - ["ring",6]
+        - []
+    
+    model.model_params.num_layers:
+      type: choice
+      options:
+        - 4
+        - 16
+
+    #data.substructure_node_feature: ["ring",6]
+    # model:
+    #   model_params:
+    #     num_layers: 5
+    #     hidden_channels: 64
+
+
+# dataset_ZINC_full:
+#   fixed:
+#     model.classification: False
+#     data.dataset: "ZINC-full"
+#     data.remove_node_features: False
+#     model:
+#       model_params:
+#         num_layers: 16
+#         hidden_channels: 128
+
+
+
+  
+
+  

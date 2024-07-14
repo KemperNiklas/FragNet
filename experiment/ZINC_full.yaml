@@ -1,0 +1,94 @@
+seml:
+  executable: main_experiment.py
+  output_dir: experiment/logs/ZINC_full
+  project_root_dir: ~/substructure-gnns
+#  description: A first test.
+
+slurm:
+  experiments_per_job: 4
+  max_simultaneous_jobs: 4  # Restrict number of simultaneously running jobs per job array
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    #mem: 16G          # memory
+    mem: 64G          # memory
+    #cpus-per-task: 4  # num cores
+    cpus-per-task: 4  # num cores
+    #time: 0-00:55     # max time, D-HH:MM
+    time: 10-00:00
+    partition: gpu_a100
+
+###### BEGIN PARAMETER CONFIGURATION ######
+
+fixed:
+  project_name: "ZINC_full_final"
+  trainer_params:
+    max_epochs: 1000 # has to be changed below too
+    testing: True
+    min_lr: 1e-8
+    patience_early_stopping: 400
+    gradient_clip_val: 1
+
+  data:
+    dataset_params.dataset_seed: 0
+    loader_params:
+      batch_size: 128
+      num_workers: 4
+    dataset: "ZINC-full"
+    one_hot_edge_features: False
+    one_hot_node_features: False
+    fragmentation_method: ["RingsPaths", "higher_level_graph_tree", {"vocab_size": 30, "max_ring": 15}]
+    
+  model:
+    model_type: "FragGNNSmall"
+    classification: False
+    model_params:
+      hidden_channels: 120
+      dropout: 0
+      num_layers: 3
+      num_layers_out: 3
+      inter_message_passing: True
+      higher_message_passing: True
+      ordinal_encoding: True
+      learned_edge_rep: True
+      reduction: "sum"
+      inter_message_params.reduction: "mean"
+      frag_reduction: "max"
+      # characteristics of the dataset:
+      atom_feature_params: 
+        num_atom_types: 30
+        num_atom_features: 1
+      edge_feature_params:
+        num_bond_types: 4
+        num_bond_features: 1
+
+
+
+  optimization:
+    loss: "mae"
+    scheduler_parameters:
+      cooldown: 5
+      factor: 0.9
+      mode: "min"
+      patience: 15
+    optimization_params:
+      weight_decay: 0
+      lr: 0.001
+    ema_decay: 0.99
+
+grid:
+
+  data.seed:
+    type: choice
+    options:
+      - 23
+      - 24
+      - 25
+  
+
+
+
+
+
+  
+
+  
