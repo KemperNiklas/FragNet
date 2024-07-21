@@ -33,11 +33,12 @@ Note that since writing the paper, we slightly updated/simplified the model. Hen
 | Dataset | Result |
 |---- | ---|
 |ZINC-10k | 0.0802 ± 0.0037 (MAE) |
-|ZINC-full | TODO |
+|ZINC-full | 0.024 (MAE) |
 |peptides-struct| 0.2471 ± 0.0005   (MAE)|
 |peptides-func| 0.6563 ± 0.0060 (AP)|
 
-To get the exact published results, you can switch to the (more cluttered) branch TODO
+To get the exact published results, you can switch to the (more cluttered) branch old/view.
+
 
 
 ## Citation
@@ -46,7 +47,7 @@ If you find our work useful, consider citing it.
 @article{fragment_biases,
   title={Expressivity and Generalization: Fragment-Biases for Molecular GNNs},
   author={Wollschl{\"a}ger, Tom and Kemper, Niklas and Hetzel, Leon and Sommer, Johanna and G{\"u}nnemann, Stephan},
-  journal={arXiv preprint arXiv:2406.08210},
+  booktitle = {Proceedings of the International Conference on Machine Learning},
   year={2024}
 }
 ```
